@@ -89,6 +89,11 @@ export const taxesCol = collection(db, 'taxes');
 export const giftCardsCol = collection(db, 'giftCards');
 export const returnsCol = collection(db, 'returns');
 export const refundsCol = collection(db, 'refunds');
+export const adminLogsCol = collection(db, 'adminLogs');
+export const brandsCol = collection(db, 'brands');
+export const bannersCol = collection(db, 'banners');
+export const supportTicketsCol = collection(db, 'supportTickets');
+export const rolesCol = collection(db, 'roles');
 
 // User Profile Management Helpers
 export async function createUserProfile(uid: string, data: {
@@ -454,5 +459,62 @@ export async function seedInitialDatabase() {
     console.log('Database seeded successfully.');
   } catch (error) {
     console.error('Error seeding initial database: ', error);
+  }
+}
+
+// Admin Helper Functions
+export async function getUserRole(uid: string): Promise<string> {
+  try {
+    const userRef = doc(db, 'users', uid);
+    const userDoc = await getDoc(userRef);
+    return userDoc.exists() ? (userDoc.data().role || 'user') : 'user';
+  } catch (error) {
+    console.error('Error getting user role:', error);
+    return 'user';
+  }
+}
+
+export async function setUserRole(uid: string, role: 'admin' | 'manager' | 'user' | 'editor' | 'warehouse' | 'support' | 'marketing') {
+  try {
+    const userRef = doc(db, 'users', uid);
+    await updateDoc(userRef, { role, updatedAt: serverTimestamp() });
+    await logAdminAction('role_change', `Changed user ${uid} role to ${role}`, { uid, role });
+  } catch (error) {
+    console.error('Error setting user role:', error);
+    throw error;
+  }
+}
+
+export async function isAdmin(uid: string): Promise<boolean> {
+  try {
+    const role = await getUserRole(uid);
+    return ['admin', 'manager'].includes(role);
+  } catch (error) {
+    return false;
+  }
+}
+
+export async function logAdminAction(action: string, description: string, details?: any) {
+  try {
+    await addDoc(adminLogsCol, {
+      action,
+      description,
+      details: details || {},
+      timestamp: serverTimestamp(),
+      createdAt: new Date().toISOString(),
+    });
+  } catch (error) {
+    console.error('Error logging admin action:', error);
+  }
+}
+
+export async function getAdminLogs(limit_count: number = 100) {
+  try {
+    const q = query(adminLogsCol, orderBy('timestamp', 'desc'), limit(limit_count));
+    const snap = await getDocs(q);
+    return snap.docs.map(d => ({ id: d.id, ...d.data() }));
+  } catch (error) {
+    console.error('Error fetching admin logs:', error);
+    return [];
   }
 }
