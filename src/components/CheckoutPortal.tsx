@@ -8,6 +8,7 @@ import {
 import { CartItem, Order } from '../types';
 import { db, couponsCol, ordersCol } from '../lib/firebase';
 import { getDoc, doc, setDoc, updateDoc, increment, getDocs, collection } from 'firebase/firestore';
+import StripePaymentForm from './StripePaymentForm';
 
 interface CheckoutPortalProps {
   cartItems: CartItem[];
@@ -420,8 +421,9 @@ export default function CheckoutPortal({
               <span className="font-mono text-[9px] text-neutral-500 uppercase tracking-widest block">SECURED PAYMENT HANDSHAKE</span>
               
               {/* Payment Methods Tabs */}
-              <div className="grid grid-cols-5 gap-1.5 border-b border-neutral-900 pb-4">
+              <div className="grid grid-cols-6 gap-1.5 border-b border-neutral-900 pb-4">
                 {[
+                  { id: 'stripe', label: 'STRIPE', desc: 'Stripe SDK' },
                   { id: 'card', label: 'CARDS', desc: 'Visa/MC/Amex' },
                   { id: 'express', label: 'GP/AP', desc: 'One-Tap token' },
                   { id: 'paypal', label: 'PAYPAL', desc: 'PayPal system' },
@@ -442,6 +444,21 @@ export default function CheckoutPortal({
                   </button>
                 ))}
               </div>
+
+              {/* Stripe Payment Form */}
+              {paymentMethod === 'stripe' && (
+                <StripePaymentForm 
+                  amount={subtotal + (shippingMethod === 'standard' ? 0 : shippingMethod === 'express' ? 15 : 35) + (subtotal * 0.08)}
+                  onSuccess={(paymentId, details) => {
+                    setCheckoutStep('processing');
+                    handlePayment(paymentId, details);
+                  }}
+                  onError={(error) => {
+                    console.error('Stripe payment error:', error);
+                    setPaymentError(error);
+                  }}
+                />
+              )}
 
               {/* Secure Card Inputs */}
               {paymentMethod === 'card' && (

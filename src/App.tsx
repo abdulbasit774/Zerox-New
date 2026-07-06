@@ -22,6 +22,7 @@ import KineticScrollStorytelling from './components/KineticScrollStorytelling';
 import AdminPanel from './components/AdminPanel';
 import CustomCursor from './components/CustomCursor';
 import WayfinderConsole from './components/WayfinderConsole';
+import CustomerDashboard from './components/CustomerDashboard';
 
 const getStudioLightingStyle = (hex: string) => {
   if (!hex) return {};
@@ -36,7 +37,7 @@ const getStudioLightingStyle = (hex: string) => {
 
 export default function App() {
   const [showSplash, setShowSplash] = useState(true);
-  const [activeView, setActiveView] = useState<'shop' | 'customizer' | 'anatomy' | 'vip' | 'admin' | 'wishlist'>('shop');
+  const [activeView, setActiveView] = useState<'shop' | 'customizer' | 'anatomy' | 'vip' | 'admin' | 'wishlist' | 'dashboard'>('shop');
   const [cart, setCart] = useState<CartItem[]>([]);
   const [isCartOpen, setIsCartOpen] = useState(false);
   const [selectedSneaker, setSelectedSneaker] = useState<Sneaker | null>(null);
@@ -813,6 +814,20 @@ export default function App() {
                               })}
                             </div>
                           )}
+                        </motion.div>
+                      );
+
+                    /* VIEW 7: CUSTOMER DASHBOARD */
+                    case 'dashboard':
+                      return (
+                        <motion.div
+                          key="dashboard"
+                          initial={{ opacity: 0 }}
+                          animate={{ opacity: 1 }}
+                          exit={{ opacity: 0 }}
+                          className="w-full"
+                        >
+                          <CustomerDashboard user={user} onLogout={() => setUser({ ...user, loggedIn: false })} />
                         </motion.div>
                       );
 
