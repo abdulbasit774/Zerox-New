@@ -23,8 +23,11 @@ interface ProductDrawerProps {
 export default function ProductDrawer({ sneaker, onClose, onAddToCart }: ProductDrawerProps) {
   const [selectedColorway, setSelectedColorway] = useState<Colorway>(sneaker.colorways[0]);
   const [selectedSize, setSelectedSize] = useState<number>(sneaker.sizes[0]);
-  const [activeTab, setActiveTab] = useState<'details' | 'specs' | 'features'>('details');
+  const [activeTab, setActiveTab] = useState<'details' | 'specs' | 'features' | 'reviews' | 'qa'>('details');
   const [addedMessage, setAddedMessage] = useState(false);
+  const [userRating, setUserRating] = useState(5);
+  const [userReviewText, setUserReviewText] = useState('');
+  const [showReviewForm, setShowReviewForm] = useState(false);
 
   // Sync selected colorway when sneaker changes
   useEffect(() => {
@@ -164,15 +167,15 @@ export default function ProductDrawer({ sneaker, onClose, onAddToCart }: Product
             </div>
           </div>
 
-          {/* Tab Navigation (Details, Specifications, Technology) */}
-          <div className="border-b border-neutral-900 flex gap-6">
-            {(['details', 'specs', 'features'] as const).map((tab) => (
+          {/* Tab Navigation (Details, Specifications, Technology, Reviews, Q&A) */}
+          <div className="border-b border-neutral-900 flex gap-6 overflow-x-auto">
+            {(['details', 'specs', 'features', 'reviews', 'qa'] as const).map((tab) => (
               <button
                 key={tab}
                 onClick={() => setActiveTab(tab)}
-                className={`py-2 px-1 font-mono text-xs uppercase tracking-widest border-b-2 transition-colors relative ${activeTab === tab ? 'border-[#C9A227] text-white font-bold' : 'border-transparent text-neutral-500 hover:text-neutral-300'}`}
+                className={`py-2 px-1 font-mono text-xs uppercase tracking-widest border-b-2 transition-colors relative whitespace-nowrap ${activeTab === tab ? 'border-[#C9A227] text-white font-bold' : 'border-transparent text-neutral-500 hover:text-neutral-300'}`}
               >
-                {tab}
+                {tab === 'qa' ? 'Q&A' : tab}
               </button>
             ))}
           </div>
@@ -219,6 +222,90 @@ export default function ProductDrawer({ sneaker, onClose, onAddToCart }: Product
                     </div>
                   </div>
                 ))}
+              </div>
+            )}
+
+            {/* REVIEWS TAB */}
+            {activeTab === 'reviews' && (
+              <div className="space-y-4">
+                <button
+                  onClick={() => setShowReviewForm(!showReviewForm)}
+                  className="w-full py-2 px-3 bg-[#C9A227]/10 hover:bg-[#C9A227]/20 border border-[#C9A227]/30 text-[#C9A227] rounded-lg font-mono text-xs uppercase tracking-widest transition-colors"
+                >
+                  {showReviewForm ? '- CANCEL' : '+ WRITE REVIEW'}
+                </button>
+
+                {showReviewForm && (
+                  <div className="bg-neutral-900/50 border border-neutral-800 rounded-xl p-4 space-y-3">
+                    <div>
+                      <label className="font-mono text-[8px] text-neutral-500 uppercase block mb-2">RATING</label>
+                      <div className="flex gap-2">
+                        {[1, 2, 3, 4, 5].map((star) => (
+                          <button
+                            key={star}
+                            onClick={() => setUserRating(star)}
+                            className="text-2xl transition-transform hover:scale-110"
+                          >
+                            {star <= userRating ? '★' : '☆'}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                    <div>
+                      <label className="font-mono text-[8px] text-neutral-500 uppercase block mb-2">YOUR REVIEW</label>
+                      <textarea
+                        value={userReviewText}
+                        onChange={(e) => setUserReviewText(e.target.value)}
+                        placeholder="Share your thoughts about this product..."
+                        className="w-full bg-neutral-950 border border-neutral-800 rounded-lg p-2 text-white text-xs font-sans placeholder-neutral-600 focus:border-[#C9A227] focus:outline-none"
+                        rows={3}
+                      />
+                    </div>
+                    <button className="w-full py-2 bg-[#C9A227] hover:bg-amber-500 text-black font-mono text-xs uppercase font-bold rounded-lg transition-colors">
+                      SUBMIT REVIEW
+                    </button>
+                  </div>
+                )}
+
+                <div className="space-y-3">
+                  {[
+                    { name: 'APEX FOUNDER', rating: 5, text: 'Absolutely revolutionary design. The engineering is second to none!' },
+                    { name: 'Creator Elite', rating: 5, text: 'Worth every penny. Premium quality and comfort.' },
+                    { name: 'Challenger Pro', rating: 4, text: 'Great product, slightly tight fit for my feet.' }
+                  ].map((review, i) => (
+                    <div key={i} className="bg-neutral-900/50 border border-neutral-800 rounded-lg p-3">
+                      <div className="flex justify-between items-start mb-2">
+                        <span className="font-sans font-bold text-white text-xs">{review.name}</span>
+                        <span className="text-[#C9A227]">{'★'.repeat(review.rating)}</span>
+                      </div>
+                      <p className="font-sans text-neutral-400 text-[11px]">{review.text}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Q&A TAB */}
+            {activeTab === 'qa' && (
+              <div className="space-y-3">
+                <div className="space-y-3">
+                  {[
+                    { q: 'What is the sizing like?', a: 'Runs true to size. Recommended to go half size up if you have wide feet.' },
+                    { q: 'Is it water resistant?', a: 'Yes, the premium materials provide excellent water resistance for daily use.' },
+                    { q: 'How long is shipping?', a: 'Standard shipping takes 3-5 business days. Express shipping available.' }
+                  ].map((qa, i) => (
+                    <details key={i} className="group bg-neutral-900/50 border border-neutral-800 rounded-lg p-3 cursor-pointer">
+                      <summary className="font-sans font-bold text-white text-xs uppercase flex justify-between items-center">
+                        {qa.q}
+                        <span className="group-open:rotate-180 transition-transform">▼</span>
+                      </summary>
+                      <p className="font-sans text-neutral-400 text-[11px] mt-2">{qa.a}</p>
+                    </details>
+                  ))}
+                </div>
+                <button className="w-full py-2 px-3 bg-[#C9A227]/10 hover:bg-[#C9A227]/20 border border-[#C9A227]/30 text-[#C9A227] rounded-lg font-mono text-xs uppercase tracking-widest transition-colors">
+                  + ASK A QUESTION
+                </button>
               </div>
             )}
           </div>

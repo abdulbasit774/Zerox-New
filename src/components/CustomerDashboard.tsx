@@ -22,6 +22,7 @@ export default function CustomerDashboard({ user: propsUser, onLogout }: Custome
   const displayUser = propsUser ? { displayName: propsUser.name, email: propsUser.email } : authContext.user;
   const loggedIn = propsUser?.loggedIn || authContext.loggedIn;
   
+  const [activeTab, setActiveTab] = useState<DashboardTab>('profile');
   const [orders, setOrders] = useState<any[]>([]);
   const [wishlist, setWishlist] = useState<string[]>([]);
   const [editingProfile, setEditingProfile] = useState(false);
@@ -218,7 +219,7 @@ export default function CustomerDashboard({ user: propsUser, onLogout }: Custome
                       <button
                         onClick={() => {
                           setEditingProfile(false);
-                          setEditName(user.displayName || '');
+                          setEditName(displayUser.displayName || '');
                         }}
                         className="flex-1 py-3 bg-neutral-900 hover:bg-neutral-800 border border-neutral-800 text-white rounded-xl font-mono text-xs font-semibold tracking-wider uppercase cursor-pointer transition-colors"
                       >
@@ -238,7 +239,7 @@ export default function CustomerDashboard({ user: propsUser, onLogout }: Custome
                     <div className="flex items-center justify-between pb-4 border-b border-neutral-900">
                       <div>
                         <p className="font-mono text-xs text-neutral-500 mb-1 tracking-wider uppercase">Full Name</p>
-                        <p className="font-sans text-lg font-semibold">{user.displayName || 'Not set'}</p>
+                        <p className="font-sans text-lg font-semibold">{displayUser.displayName || 'Not set'}</p>
                       </div>
                       <button
                         onClick={() => setEditingProfile(true)}
@@ -300,6 +301,7 @@ export default function CustomerDashboard({ user: propsUser, onLogout }: Custome
                           initial={{ opacity: 0, x: -20 }}
                           animate={{ opacity: 1, x: 0 }}
                           transition={{ delay: index * 0.05 }}
+                          onClick={() => setSelectedOrderForDetail(order)}
                           className="bg-gradient-to-r from-neutral-950/60 to-neutral-950/20 border border-neutral-900 rounded-2xl p-6 hover:border-[#C9A227]/50 transition-all hover:shadow-lg hover:shadow-[#C9A227]/10 group cursor-pointer"
                         >
                           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
@@ -499,6 +501,126 @@ export default function CustomerDashboard({ user: propsUser, onLogout }: Custome
           </AnimatePresence>
         </div>
       </div>
+
+      {/* Order Detail Modal */}
+      <AnimatePresence>
+        {selectedOrderForDetail && (
+          <motion.div
+            key="order-modal"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            onClick={() => setSelectedOrderForDetail(null)}
+            className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4"
+          >
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              onClick={(e) => e.stopPropagation()}
+              className="bg-neutral-950 border border-neutral-900 rounded-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto"
+            >
+              {/* Modal Header */}
+              <div className="sticky top-0 bg-gradient-to-r from-neutral-950 to-black border-b border-neutral-900 p-6 flex items-center justify-between">
+                <div>
+                  <p className="font-mono text-xs text-neutral-500 tracking-wider uppercase mb-1">Order Details</p>
+                  <h3 className="font-sans text-2xl font-black text-white">#{selectedOrderForDetail.id.slice(0, 8).toUpperCase()}</h3>
+                </div>
+                <button
+                  onClick={() => setSelectedOrderForDetail(null)}
+                  className="p-2 hover:bg-neutral-900 rounded-lg transition-colors"
+                >
+                  <X className="w-5 h-5 text-neutral-400" />
+                </button>
+              </div>
+
+              {/* Modal Content */}
+              <div className="p-6 space-y-6">
+                {/* Order Status */}
+                <div>
+                  <p className="font-mono text-xs text-neutral-500 tracking-wider uppercase mb-3">Status</p>
+                  <div className="flex items-center gap-4">
+                    <span className={`px-4 py-2 rounded-lg font-mono text-sm font-semibold tracking-wider uppercase border ${
+                      selectedOrderForDetail.status === 'DELIVERED' ? 'text-emerald-400 bg-emerald-500/10 border-emerald-500/30' :
+                      selectedOrderForDetail.status === 'SHIPPED' ? 'text-cyan-400 bg-cyan-500/10 border-cyan-500/30' :
+                      selectedOrderForDetail.status === 'PROCESSING' ? 'text-blue-400 bg-blue-500/10 border-blue-500/30' :
+                      'text-amber-400 bg-amber-500/10 border-amber-500/30'
+                    }`}>
+                      {selectedOrderForDetail.status || 'PENDING'}
+                    </span>
+                    <p className="text-neutral-500 text-sm">{new Date(selectedOrderForDetail.createdAt?.toDate?.() || Date.now()).toLocaleDateString()}</p>
+                  </div>
+                </div>
+
+                {/* Order Items */}
+                {selectedOrderForDetail.items && selectedOrderForDetail.items.length > 0 && (
+                  <div>
+                    <p className="font-mono text-xs text-neutral-500 tracking-wider uppercase mb-4">Items</p>
+                    <div className="space-y-3">
+                      {selectedOrderForDetail.items.map((item: any, idx: number) => (
+                        <div key={idx} className="flex items-center justify-between p-4 bg-neutral-900/50 rounded-lg border border-neutral-800">
+                          <div className="flex-1">
+                            <p className="font-sans font-semibold text-white mb-1">{item.name}</p>
+                            <p className="text-xs text-neutral-500">Qty: {item.quantity}</p>
+                          </div>
+                          <p className="font-sans font-bold text-[#C9A227]">${(item.price * item.quantity).toFixed(2)}</p>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Order Summary */}
+                <div className="border-t border-neutral-900 pt-6">
+                  <div className="space-y-3">
+                    <div className="flex justify-between text-sm">
+                      <span className="text-neutral-400">Subtotal:</span>
+                      <span className="text-white font-semibold">${(selectedOrderForDetail.subtotal || 0).toFixed(2)}</span>
+                    </div>
+                    <div className="flex justify-between text-sm">
+                      <span className="text-neutral-400">Shipping:</span>
+                      <span className="text-white font-semibold">${(selectedOrderForDetail.shipping || 0).toFixed(2)}</span>
+                    </div>
+                    <div className="flex justify-between text-sm">
+                      <span className="text-neutral-400">Tax:</span>
+                      <span className="text-white font-semibold">${(selectedOrderForDetail.tax || 0).toFixed(2)}</span>
+                    </div>
+                    <div className="flex justify-between text-lg border-t border-neutral-900 pt-3">
+                      <span className="font-semibold text-white">Total:</span>
+                      <span className="font-bold text-[#C9A227]">${(selectedOrderForDetail.totalPrice || 0).toFixed(2)}</span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Shipping Info */}
+                {selectedOrderForDetail.shippingAddress && (
+                  <div>
+                    <p className="font-mono text-xs text-neutral-500 tracking-wider uppercase mb-3">Shipping Address</p>
+                    <div className="bg-neutral-900/50 border border-neutral-800 rounded-lg p-4">
+                      <p className="font-sans font-semibold text-white mb-1">{selectedOrderForDetail.shippingAddress.name}</p>
+                      <p className="text-sm text-neutral-400 mb-1">{selectedOrderForDetail.shippingAddress.address}</p>
+                      <p className="text-sm text-neutral-400">{selectedOrderForDetail.shippingAddress.city}, {selectedOrderForDetail.shippingAddress.state} {selectedOrderForDetail.shippingAddress.zip}</p>
+                    </div>
+                  </div>
+                )}
+
+                {/* Action Buttons */}
+                <div className="flex gap-3 pt-4 border-t border-neutral-900">
+                  <button
+                    onClick={() => setSelectedOrderForDetail(null)}
+                    className="flex-1 py-3 bg-neutral-900 hover:bg-neutral-800 border border-neutral-800 text-white rounded-lg font-mono text-sm font-semibold tracking-wider uppercase cursor-pointer transition-colors"
+                  >
+                    CLOSE
+                  </button>
+                  <button className="flex-1 py-3 bg-[#C9A227] hover:bg-amber-500 text-black rounded-lg font-mono text-sm font-semibold tracking-wider uppercase cursor-pointer transition-colors">
+                    CONTACT SUPPORT
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

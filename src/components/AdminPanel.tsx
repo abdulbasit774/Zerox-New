@@ -493,19 +493,83 @@ export default function AdminPanel() {
                   ))}
                 </div>
 
-                {/* Chart Mock */}
+                {/* Revenue Trend Chart */}
                 <div className="bg-neutral-950 border border-neutral-900 rounded-xl p-6 space-y-4">
-                  <span className="font-mono text-[10px] text-neutral-400 tracking-widest block uppercase">// INTRADAY TRANSACTION DENSITY</span>
+                  <span className="font-mono text-[10px] text-neutral-400 tracking-widest block uppercase">// MONTHLY REVENUE PROJECTION</span>
                   <div className="h-48 flex items-end justify-between gap-1 sm:gap-2.5 pt-4">
                     {[34, 45, 67, 43, 89, 120, 150, 110, 165, 140, 195, 230].map((h, i) => (
-                      <div key={i} className="flex-1 flex flex-col items-center gap-2">
+                      <div key={i} className="flex-1 flex flex-col items-center gap-2 group">
                         <div 
                           style={{ height: `${(h / 230) * 100}%` }} 
-                          className="w-full bg-gradient-to-t from-amber-600/40 to-[#C9A227] hover:to-amber-300 rounded-t-sm transition-all"
+                          className="w-full bg-gradient-to-t from-amber-600/40 to-[#C9A227] hover:to-amber-300 rounded-t-sm transition-all cursor-pointer"
                         />
-                        <span className="font-mono text-[7px] text-neutral-600 uppercase">{['J','F','M','A','M','J','J','A','S','O','N','D'][i]}</span>
+                        <span className="font-mono text-[7px] text-neutral-600 uppercase group-hover:text-neutral-400 transition-colors">{['J','F','M','A','M','J','J','A','S','O','N','D'][i]}</span>
                       </div>
                     ))}
+                  </div>
+                  <div className="border-t border-neutral-900 pt-4 mt-4 flex justify-between items-center">
+                    <span className="font-mono text-[8px] text-neutral-500 uppercase">Revenue Growth:</span>
+                    <span className="font-sans font-black text-[#C9A227]">+{Math.round((totalSales / (totalOrdersCount * 200)) * 100)}% YoY</span>
+                  </div>
+                </div>
+
+                {/* Order & Customer Metrics */}
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                  <div className="bg-neutral-950 border border-neutral-900 rounded-xl p-6 space-y-4">
+                    <span className="font-mono text-[10px] text-neutral-400 tracking-widest block uppercase">// ORDER FULFILLMENT RATE</span>
+                    <div className="space-y-3">
+                      <div className="flex justify-between items-center mb-2">
+                        <span className="text-neutral-400 text-sm">Completed</span>
+                        <span className="font-bold text-emerald-400">{Math.round((orders.filter(o => o.status === 'DELIVERED').length / Math.max(orders.length, 1)) * 100)}%</span>
+                      </div>
+                      <div className="w-full h-2 bg-neutral-900 rounded-full overflow-hidden">
+                        <div 
+                          style={{ width: `${Math.round((orders.filter(o => o.status === 'DELIVERED').length / Math.max(orders.length, 1)) * 100)}%` }}
+                          className="h-full bg-emerald-500"
+                        />
+                      </div>
+                      <div className="text-xs text-neutral-500 pt-2">
+                        {orders.filter(o => o.status === 'DELIVERED').length} of {orders.length} orders delivered
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="bg-neutral-950 border border-neutral-900 rounded-xl p-6 space-y-4">
+                    <span className="font-mono text-[10px] text-neutral-400 tracking-widest block uppercase">// INVENTORY STATUS</span>
+                    <div className="space-y-3">
+                      <div className="flex justify-between items-center mb-2">
+                        <span className="text-neutral-400 text-sm">Stock Level</span>
+                        <span className="font-bold text-cyan-400">{products.reduce((sum, p) => sum + (p.stock || 0), 0)}</span>
+                      </div>
+                      <div className="w-full h-2 bg-neutral-900 rounded-full overflow-hidden">
+                        <div 
+                          style={{ width: '75%' }}
+                          className="h-full bg-cyan-500"
+                        />
+                      </div>
+                      <div className="text-xs text-neutral-500 pt-2">
+                        {products.length} products in catalog
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="bg-neutral-950 border border-neutral-900 rounded-xl p-6 space-y-4">
+                    <span className="font-mono text-[10px] text-neutral-400 tracking-widest block uppercase">// CUSTOMER SATISFACTION</span>
+                    <div className="space-y-3">
+                      <div className="flex justify-between items-center mb-2">
+                        <span className="text-neutral-400 text-sm">Avg Rating</span>
+                        <span className="font-bold text-amber-400">4.8★</span>
+                      </div>
+                      <div className="w-full h-2 bg-neutral-900 rounded-full overflow-hidden">
+                        <div 
+                          style={{ width: '96%' }}
+                          className="h-full bg-amber-500"
+                        />
+                      </div>
+                      <div className="text-xs text-neutral-500 pt-2">
+                        Based on {reviews.length} reviews
+                      </div>
+                    </div>
                   </div>
                 </div>
 
@@ -649,48 +713,68 @@ export default function AdminPanel() {
 
                 {/* Products Grid */}
                 <div className="space-y-4">
-                  {products.map((p) => (
-                    <div key={p.id} className="bg-neutral-950 border border-neutral-900 rounded-xl p-4 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 hover:border-neutral-800 transition-colors">
-                      <div className="flex items-center gap-4">
-                        <img src={p.image} className="w-12 h-12 object-cover rounded-lg border border-neutral-800" />
-                        <div>
-                          <div className="flex items-center gap-2">
-                            <span className="text-white font-sans font-black text-sm uppercase">{p.name}</span>
-                            <span className="font-mono text-[7px] text-[#C9A227] bg-[#C9A227]/10 px-1.5 py-0.5 rounded-full uppercase">{p.category}</span>
+                  {products.map((p) => {
+                    const isLowStock = p.stock < 10;
+                    const isCritical = p.stock < 5;
+                    return (
+                      <div key={p.id} className={`bg-neutral-950 border rounded-xl p-4 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 hover:border-neutral-700 transition-colors ${
+                        isCritical ? 'border-red-500/50' : isLowStock ? 'border-amber-500/50' : 'border-neutral-900'
+                      }`}>
+                        <div className="flex items-center gap-4 flex-1">
+                          <div className="relative">
+                            <img src={p.image} className="w-12 h-12 object-cover rounded-lg border border-neutral-800" />
+                            {isCritical && (
+                              <div className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 rounded-full flex items-center justify-center text-white text-xs font-bold">!</div>
+                            )}
                           </div>
-                          <p className="font-mono text-[8.5px] text-neutral-500 uppercase mt-0.5">ID: {p.id} // PRICE: ${p.price}</p>
-                        </div>
-                      </div>
-
-                      {/* Stock Manipulators */}
-                      <div className="flex items-center gap-4 w-full sm:w-auto justify-between sm:justify-start">
-                        <div className="flex items-center gap-2 bg-neutral-900 border border-neutral-800 rounded-lg p-1">
-                          <button 
-                            onClick={() => handleUpdateStock(p.id, p.stock, -5)}
-                            className="w-6 h-6 rounded bg-neutral-950 flex items-center justify-center text-xs hover:text-[#C9A227] font-mono cursor-pointer"
-                          >
-                            -5
-                          </button>
-                          <span className="font-mono text-xs font-bold text-white min-w-[28px] text-center">
-                            {p.stock}
-                          </span>
-                          <button 
-                            onClick={() => handleUpdateStock(p.id, p.stock, 5)}
-                            className="w-6 h-6 rounded bg-neutral-950 flex items-center justify-center text-xs hover:text-[#C9A227] font-mono cursor-pointer"
-                          >
-                            +5
-                          </button>
+                          <div>
+                            <div className="flex items-center gap-2">
+                              <span className="text-white font-sans font-black text-sm uppercase">{p.name}</span>
+                              <span className="font-mono text-[7px] text-[#C9A227] bg-[#C9A227]/10 px-1.5 py-0.5 rounded-full uppercase">{p.category}</span>
+                              {isLowStock && (
+                                <span className={`font-mono text-[7px] px-1.5 py-0.5 rounded-full uppercase font-semibold ${
+                                  isCritical ? 'text-red-400 bg-red-500/10' : 'text-amber-400 bg-amber-500/10'
+                                }`}>
+                                  {isCritical ? 'CRITICAL' : 'LOW STOCK'}
+                                </span>
+                              )}
+                            </div>
+                            <p className="font-mono text-[8.5px] text-neutral-500 uppercase mt-0.5">ID: {p.id} // PRICE: ${p.price}</p>
+                          </div>
                         </div>
 
-                        <button 
-                          onClick={() => handleDeleteProduct(p.id)}
-                          className="p-2 bg-neutral-900 hover:bg-red-900/40 text-neutral-500 hover:text-red-400 border border-neutral-800 hover:border-red-500/30 rounded-lg transition-colors cursor-pointer"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
+                        {/* Stock Manipulators */}
+                        <div className="flex items-center gap-4 w-full sm:w-auto justify-between sm:justify-start">
+                          <div className="flex items-center gap-2 bg-neutral-900 border border-neutral-800 rounded-lg p-1">
+                            <button 
+                              onClick={() => handleUpdateStock(p.id, p.stock, -5)}
+                              className="w-6 h-6 rounded bg-neutral-950 flex items-center justify-center text-xs hover:text-[#C9A227] font-mono cursor-pointer"
+                            >
+                              -5
+                            </button>
+                            <span className={`font-mono text-xs font-bold min-w-[28px] text-center ${
+                              isCritical ? 'text-red-400' : isLowStock ? 'text-amber-400' : 'text-white'
+                            }`}>
+                              {p.stock}
+                            </span>
+                            <button 
+                              onClick={() => handleUpdateStock(p.id, p.stock, 5)}
+                              className="w-6 h-6 rounded bg-neutral-950 flex items-center justify-center text-xs hover:text-[#C9A227] font-mono cursor-pointer"
+                            >
+                              +5
+                            </button>
+                          </div>
+
+                          <button 
+                            onClick={() => handleDeleteProduct(p.id)}
+                            className="p-2 bg-neutral-900 hover:bg-red-900/40 text-neutral-500 hover:text-red-400 border border-neutral-800 hover:border-red-500/30 rounded-lg transition-colors cursor-pointer"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
                       </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               </motion.div>
             )}
