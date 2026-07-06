@@ -6,15 +6,21 @@ import {
   User, CheckCircle, Bell, Sparkles, Heart, CreditCard, ChevronRight, CornerDownRight
 } from 'lucide-react';
 import { UserProfile, Order } from '../types';
-import { auth, db, seedInitialDatabase, usersCol } from '../lib/firebase';
+import { auth, db, seedInitialDatabase, usersCol, createUserProfile, updateUserProfile, googleProvider, facebookProvider, appleProvider } from '../lib/firebase';
 import { 
   createUserWithEmailAndPassword, 
   signInWithEmailAndPassword, 
   signOut, 
   signInWithPopup, 
   GoogleAuthProvider,
+  FacebookAuthProvider,
+  OAuthProvider,
   updateProfile,
-  onAuthStateChanged
+  onAuthStateChanged,
+  sendPasswordResetEmail,
+  sendEmailVerification,
+  updateEmail as fbUpdateEmail,
+  updatePassword as fbUpdatePassword
 } from 'firebase/auth';
 import { doc, getDoc, setDoc, updateDoc, collection, getDocs, addDoc, query, where } from 'firebase/firestore';
 import Logo from './Logo';
@@ -24,11 +30,11 @@ interface LoginPortalProps {
   onLogin: (name: string, email: string) => void;
   onLogout: () => void;
   onViewOrder: (order: Order) => void;
-  initialMode?: 'login' | 'signup' | 'phone';
+  initialMode?: 'login' | 'signup' | 'phone' | 'forgot-password' | 'verify-email' | 'profile';
 }
 
 export default function LoginPortal({ user, onLogin, onLogout, onViewOrder, initialMode = 'login' }: LoginPortalProps) {
-  const [activeMode, setActiveMode] = useState<'login' | 'signup' | 'phone'>(initialMode);
+  const [activeMode, setActiveMode] = useState<'login' | 'signup' | 'phone' | 'forgot-password' | 'verify-email' | 'profile'>(initialMode);
 
   // Force sync state if initialMode prop changes dynamically
   useEffect(() => {
@@ -38,10 +44,19 @@ export default function LoginPortal({ user, onLogin, onLogout, onViewOrder, init
   // Auth Form Fields
   const [emailInput, setEmailInput] = useState('');
   const [passwordInput, setPasswordInput] = useState('');
+  const [confirmPasswordInput, setConfirmPasswordInput] = useState('');
   const [nameInput, setNameInput] = useState('');
   const [phoneInput, setPhoneInput] = useState('');
   const [otpInput, setOtpInput] = useState('');
   const [otpSent, setOtpSent] = useState(false);
+
+  // Phase 1: New features
+  const [rememberMe, setRememberMe] = useState(false);
+  const [resetEmailSent, setResetEmailSent] = useState(false);
+  const [passwordStrength, setPasswordStrength] = useState<'weak' | 'medium' | 'strong'>('weak');
+  const [emailVerificationSent, setEmailVerificationSent] = useState(false);
+  const [passwordResetCode, setPasswordResetCode] = useState('');
+  const [newPasswordForReset, setNewPasswordForReset] = useState('');
 
   // States
   const [error, setError] = useState('');
@@ -81,38 +96,74 @@ export default function LoginPortal({ user, onLogin, onLogout, onViewOrder, init
     fetchNotifications();
   }, []);
 
-  // Set real Firebase Authentication Listener
+  // Session Persistence - Load remembered email
+  useEffect(() => {
+    const remembered = localStorage.getItem('zerox_remember_email');
+    if (remembered) {
+      setEmailInput(remembered);
+    }
+  }, []);
+
+  // Authentication State Listener - Handles session persistence
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (fbUser) => {
       if (fbUser) {
-        // Fetch or create profile in firestore
-        const docRef = doc(db, 'users', fbUser.uid);
-        const docSnap = await getDoc(docRef);
-        if (docSnap.exists()) {
-          const profile = docSnap.data();
-          onLogin(profile.name || fbUser.displayName || 'Collector', fbUser.email || '');
-          if (profile.identityVerified) {
-            setIsVerifiedUser(true);
-            setKycStep('verified');
+        try {
+          // Fetch or create profile in firestore
+          const docRef = doc(db, 'users', fbUser.uid);
+          const docSnap = await getDoc(docRef);
+          
+          if (docSnap.exists()) {
+            const profile = docSnap.data();
+            onLogin(profile.fullName || profile.name || fbUser.displayName || 'Collector', fbUser.email || '');
+            if (profile.identityVerified) {
+              setIsVerifiedUser(true);
+              setKycStep('verified');
+            }
+          } else {
+            // Create new Firestore profile
+            await createUserProfile(fbUser.uid, {
+              email: fbUser.email || '',
+              fullName: fbUser.displayName || 'Collector',
+              photoURL: fbUser.photoURL || '',
+              provider: fbUser.providerData[0]?.providerId?.split('.')[0] || 'email',
+              role: 'user'
+            });
+            onLogin(fbUser.displayName || 'Collector', fbUser.email || '');
           }
-        } else {
-          // New Firestore profile creation
-          const profilePayload = {
-            name: fbUser.displayName || nameInput || 'Collector',
-            email: fbUser.email || emailInput,
-            membershipTier: 'Challenger',
-            creatorRank: 999,
-            challengerPoints: 100,
-            identityVerified: false,
-            createdAt: new Date().toISOString()
-          };
-          await setDoc(docRef, profilePayload);
-          onLogin(profilePayload.name, profilePayload.email);
+        } catch (error) {
+          console.error('Error in auth state listener:', error);
         }
       }
     });
     return () => unsubscribe();
-  }, []);
+  }, [onLogin]);
+
+  // Password Strength Validator
+  const validatePasswordStrength = (password: string) => {
+    if (password.length < 8) {
+      setPasswordStrength('weak');
+      return false;
+    }
+    const hasUpperCase = /[A-Z]/.test(password);
+    const hasLowerCase = /[a-z]/.test(password);
+    const hasNumbers = /\d/.test(password);
+    const hasSpecialChar = /[!@#$%^&*]/.test(password);
+    
+    const strength = [hasUpperCase, hasLowerCase, hasNumbers, hasSpecialChar].filter(Boolean).length;
+    if (strength >= 3) {
+      setPasswordStrength('strong');
+      return true;
+    } else if (strength >= 2) {
+      setPasswordStrength('medium');
+      return true;
+    }
+    setPasswordStrength('weak');
+    return false;
+  };
+
+  // Email validation
+  const isValidEmail = (email: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
 
   // Standard Login
   const handleEmailLogin = async (e: React.FormEvent) => {
@@ -121,10 +172,27 @@ export default function LoginPortal({ user, onLogin, onLogout, onViewOrder, init
       setError('PLEASE PROVIDE CREDENTIALS');
       return;
     }
+    if (!isValidEmail(emailInput)) {
+      setError('INVALID EMAIL FORMAT');
+      return;
+    }
     setError('');
     setIsLoading(true);
     try {
-      await signInWithEmailAndPassword(auth, emailInput, passwordInput);
+      const userCred = await signInWithEmailAndPassword(auth, emailInput, passwordInput);
+      
+      // Remember me functionality
+      if (rememberMe) {
+        localStorage.setItem('zerox_remember_email', emailInput);
+      } else {
+        localStorage.removeItem('zerox_remember_email');
+      }
+      
+      // Update last login
+      await updateUserProfile(userCred.user.uid, {
+        lastLogin: new Date().toISOString(),
+      });
+      
       setSuccess('CONNECTED SUCCESSFULLY');
     } catch (err: any) {
       setError(err.message.replace('Firebase:', '').toUpperCase());
@@ -136,17 +204,47 @@ export default function LoginPortal({ user, onLogin, onLogout, onViewOrder, init
   // Standard Signup
   const handleEmailSignup = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!emailInput || !passwordInput || !nameInput) {
+    if (!emailInput || !passwordInput || !nameInput || !confirmPasswordInput) {
       setError('ALL FIELDS ARE REQUIRED');
       return;
     }
+    if (!isValidEmail(emailInput)) {
+      setError('INVALID EMAIL FORMAT');
+      return;
+    }
+    if (passwordInput !== confirmPasswordInput) {
+      setError('PASSWORDS DO NOT MATCH');
+      return;
+    }
+    if (!validatePasswordStrength(passwordInput)) {
+      setError('PASSWORD TOO WEAK. USE 8+ CHARS WITH UPPERCASE, LOWERCASE, NUMBER, AND SYMBOL');
+      return;
+    }
+    
     setError('');
     setIsLoading(true);
     try {
+      // Create Firebase user
       const userCred = await createUserWithEmailAndPassword(auth, emailInput, passwordInput);
-      await updateProfile(userCred.user, { displayName: nameInput });
       
-      // Store user doc
+      // Update auth profile
+      await updateProfile(userCred.user, { 
+        displayName: nameInput,
+      });
+      
+      // Send email verification
+      await sendEmailVerification(userCred.user);
+      setEmailVerificationSent(true);
+      
+      // Create Firestore user document with complete profile
+      await createUserProfile(userCred.user.uid, {
+        email: emailInput,
+        fullName: nameInput,
+        provider: 'email',
+        role: 'user'
+      });
+      
+      // Store user doc (legacy compatibility)
       const userDoc = doc(db, 'users', userCred.user.uid);
       await setDoc(userDoc, {
         name: nameInput,
@@ -166,30 +264,97 @@ export default function LoginPortal({ user, onLogin, onLogout, onViewOrder, init
     }
   };
 
-  // Social login / popup simulation
+  // Enhanced Social Login with Firebase Authentication
   const handleSocialLogin = async (providerName: string) => {
     setIsLoading(true);
     setError('');
     try {
-      if (providerName === 'Google') {
-        const provider = new GoogleAuthProvider();
-        await signInWithPopup(auth, provider);
-      } else {
-        // Beautiful simulated enterprise authentication matching standard specs
-        setTimeout(async () => {
-          const mockEmail = `social_athlete_${Math.floor(Math.random() * 90000)}@zerox.com`;
-          const mockName = `Collector ${providerName}`;
-          onLogin(mockName, mockEmail);
-          setSuccess(`CONNECTED SECURELY VIA ${providerName.toUpperCase()}`);
-          setIsLoading(false);
-        }, 1200);
+      let selectedProvider: any;
+      let userCred: any;
+      
+      switch (providerName) {
+        case 'Google':
+          selectedProvider = googleProvider;
+          userCred = await signInWithPopup(auth, selectedProvider);
+          break;
+        case 'Apple':
+          // PENDING CONFIGURATION: Requires Apple Developer Account and App ID configuration
+          selectedProvider = appleProvider;
+          try {
+            userCred = await signInWithPopup(auth, selectedProvider);
+          } catch (err: any) {
+            if (err.code === 'auth/popup-blocked' || err.code === 'auth/network-request-failed') {
+              setError('APPLE LOGIN: PENDING CONFIGURATION - REQUIRES DEVELOPER ACCOUNT');
+              setIsLoading(false);
+              return;
+            }
+            throw err;
+          }
+          break;
+        case 'Facebook':
+          // PENDING CONFIGURATION: Requires Facebook App ID and Secret configuration
+          selectedProvider = facebookProvider;
+          try {
+            userCred = await signInWithPopup(auth, selectedProvider);
+          } catch (err: any) {
+            if (err.code === 'auth/popup-blocked' || err.code === 'auth/network-request-failed') {
+              setError('FACEBOOK LOGIN: PENDING CONFIGURATION - REQUIRES DEVELOPER APP');
+              setIsLoading(false);
+              return;
+            }
+            throw err;
+          }
+          break;
+        default:
+          throw new Error(`Unknown provider: ${providerName}`);
+      }
+      
+      // Create or update user profile
+      if (userCred && userCred.user) {
+        await createUserProfile(userCred.user.uid, {
+          email: userCred.user.email || '',
+          fullName: userCred.user.displayName || `User ${providerName}`,
+          photoURL: userCred.user.photoURL || '',
+          provider: providerName.toLowerCase(),
+          role: 'user'
+        });
+        
+        setSuccess(`CONNECTED SECURELY VIA ${providerName.toUpperCase()}`);
       }
     } catch (err: any) {
-      // If popup is blocked/unsupported in preview iframe, use beautiful simulated fallback
-      console.log('Handled social callback redirection');
-      const mockEmail = `${providerName.toLowerCase()}_purchaser@zerox.com`;
-      onLogin(`Bespoke ${providerName} Collector`, mockEmail);
-      setSuccess(`CONNECTED VIA SECURE ${providerName.toUpperCase()} PROTOCOL`);
+      console.log('[v0] Social login error:', err);
+      // Graceful fallback for blocked popups in preview environment
+      if (err.code === 'auth/popup-blocked' || err.code === 'auth/network-request-failed') {
+        setError(`${providerName.toUpperCase()} LOGIN: TEMPORARILY UNAVAILABLE IN THIS ENVIRONMENT`);
+      } else {
+        setError(err.message?.replace('Firebase:', '').toUpperCase() || `SOCIAL LOGIN FAILED: ${providerName.toUpperCase()}`);
+      }
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // Forgot Password Handler
+  const handleForgotPassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!emailInput) {
+      setError('PLEASE PROVIDE YOUR EMAIL ADDRESS');
+      return;
+    }
+    if (!isValidEmail(emailInput)) {
+      setError('INVALID EMAIL FORMAT');
+      return;
+    }
+    
+    setError('');
+    setIsLoading(true);
+    try {
+      await sendPasswordResetEmail(auth, emailInput);
+      setResetEmailSent(true);
+      setSuccess('PASSWORD RESET LINK SENT TO YOUR EMAIL');
+    } catch (err: any) {
+      setError(err.message.replace('Firebase:', '').toUpperCase());
+    } finally {
       setIsLoading(false);
     }
   };
@@ -263,9 +428,67 @@ export default function LoginPortal({ user, onLogin, onLogout, onViewOrder, init
     }, 2500);
   };
 
+  // Profile Management Handlers
+  const handleUpdateEmail = async (newEmail: string) => {
+    if (!auth.currentUser) {
+      setError('NO USER LOGGED IN');
+      return;
+    }
+    if (!isValidEmail(newEmail)) {
+      setError('INVALID EMAIL FORMAT');
+      return;
+    }
+    
+    setIsLoading(true);
+    try {
+      await fbUpdateEmail(auth.currentUser, newEmail);
+      await updateUserProfile(auth.currentUser.uid, {
+        email: newEmail,
+      });
+      setSuccess('EMAIL UPDATED SUCCESSFULLY');
+    } catch (err: any) {
+      setError(err.message.replace('Firebase:', '').toUpperCase());
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleUpdatePassword = async (currentPassword: string, newPassword: string) => {
+    if (!auth.currentUser) {
+      setError('NO USER LOGGED IN');
+      return;
+    }
+    if (!validatePasswordStrength(newPassword)) {
+      setError('NEW PASSWORD IS TOO WEAK');
+      return;
+    }
+    
+    setIsLoading(true);
+    try {
+      // Re-authenticate first
+      const email = auth.currentUser.email;
+      if (!email) {
+        setError('CANNOT UPDATE PASSWORD');
+        return;
+      }
+      
+      // Sign in again with current password
+      await signInWithEmailAndPassword(auth, email, currentPassword);
+      
+      // Update password
+      await fbUpdatePassword(auth.currentUser, newPassword);
+      setSuccess('PASSWORD UPDATED SUCCESSFULLY');
+    } catch (err: any) {
+      setError(err.message.replace('Firebase:', '').toUpperCase());
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   const handleFirebaseSignout = async () => {
     try {
       await signOut(auth);
+      localStorage.removeItem('zerox_remember_email');
     } catch (err) {
       console.error(err);
     }
@@ -327,6 +550,12 @@ export default function LoginPortal({ user, onLogin, onLogout, onViewOrder, init
                 >
                   PHONE/OTP
                 </button>
+                <button 
+                  onClick={() => { setActiveMode('forgot-password'); setError(''); setSuccess(''); }}
+                  className={`flex-1 font-mono text-[9px] tracking-widest uppercase pb-2 transition-all cursor-pointer ${activeMode === 'forgot-password' ? 'text-[#C9A227] border-b border-[#C9A227] font-black' : 'text-neutral-500 hover:text-neutral-300'}`}
+                >
+                  RESET PASS
+                </button>
               </div>
 
               {/* Messages */}
@@ -366,10 +595,28 @@ export default function LoginPortal({ user, onLogin, onLogout, onViewOrder, init
                       className="w-full bg-neutral-900 border border-neutral-900 focus:border-[#C9A227] rounded-xl px-4 py-2.5 font-sans text-xs text-white focus:outline-none transition-colors"
                     />
                   </div>
+                  <div className="flex items-center justify-between">
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <input 
+                        type="checkbox" 
+                        checked={rememberMe}
+                        onChange={e => setRememberMe(e.target.checked)}
+                        className="w-4 h-4 rounded border-neutral-700 bg-neutral-900 cursor-pointer"
+                      />
+                      <span className="font-mono text-[8px] text-neutral-500 uppercase tracking-wider">REMEMBER ATHLETE</span>
+                    </label>
+                    <button 
+                      type="button"
+                      onClick={() => { setActiveMode('forgot-password'); setError(''); setSuccess(''); }}
+                      className="font-mono text-[8px] text-[#C9A227] hover:text-amber-400 uppercase tracking-wider transition-colors"
+                    >
+                      RESET PASSWORD?
+                    </button>
+                  </div>
                   <button 
                     type="submit"
                     disabled={isLoading}
-                    className="w-full py-3 bg-gradient-to-r from-amber-600 to-[#C9A227] hover:from-amber-500 hover:to-amber-400 text-black font-sans font-black text-xs uppercase rounded-xl flex items-center justify-center gap-2 transition-all cursor-pointer shadow-lg"
+                    className="w-full py-3 bg-gradient-to-r from-amber-600 to-[#C9A227] hover:from-amber-500 hover:to-amber-400 text-black font-sans font-black text-xs uppercase rounded-xl flex items-center justify-center gap-2 transition-all cursor-pointer shadow-lg disabled:opacity-50"
                   >
                     <Lock className="w-4 h-4" />
                     {isLoading ? 'ESTABLISHING INTERLINK...' : 'DECRYPT ATHLETE KEY'}
@@ -408,15 +655,42 @@ export default function LoginPortal({ user, onLogin, onLogout, onViewOrder, init
                       type="password" 
                       required 
                       value={passwordInput}
-                      onChange={e => setPasswordInput(e.target.value)}
+                      onChange={e => {
+                        setPasswordInput(e.target.value);
+                        validatePasswordStrength(e.target.value);
+                      }}
                       placeholder="CHOOSE A STRONG PASSWORD"
                       className="w-full bg-neutral-900 border border-neutral-900 focus:border-[#C9A227] rounded-xl px-4 py-2.5 font-sans text-xs text-white focus:outline-none transition-colors"
                     />
+                    <div className="mt-2 flex gap-1">
+                      <div className={`flex-1 h-1.5 rounded-full ${passwordStrength === 'weak' ? 'bg-red-500' : 'bg-neutral-700'}`} />
+                      <div className={`flex-1 h-1.5 rounded-full ${passwordStrength === 'medium' ? 'bg-yellow-500' : passwordStrength === 'strong' ? 'bg-emerald-500' : 'bg-neutral-700'}`} />
+                      <div className={`flex-1 h-1.5 rounded-full ${passwordStrength === 'strong' ? 'bg-emerald-500' : 'bg-neutral-700'}`} />
+                    </div>
+                    <p className={`font-mono text-[7px] mt-1 uppercase tracking-wider ${passwordStrength === 'weak' ? 'text-red-400' : passwordStrength === 'medium' ? 'text-yellow-400' : 'text-emerald-400'}`}>
+                      {passwordStrength === 'weak' ? 'WEAK' : passwordStrength === 'medium' ? 'MEDIUM STRENGTH' : 'STRONG PASSWORD'}
+                    </p>
                   </div>
+                  <div>
+                    <label className="font-mono text-[8px] text-neutral-500 block mb-1">CONFIRM SECRET PASSWORD</label>
+                    <input 
+                      type="password" 
+                      required 
+                      value={confirmPasswordInput}
+                      onChange={e => setConfirmPasswordInput(e.target.value)}
+                      placeholder="CONFIRM PASSWORD"
+                      className="w-full bg-neutral-900 border border-neutral-900 focus:border-[#C9A227] rounded-xl px-4 py-2.5 font-sans text-xs text-white focus:outline-none transition-colors"
+                    />
+                  </div>
+                  {emailVerificationSent && (
+                    <div className="p-3 bg-emerald-500/10 border border-emerald-500/30 rounded-xl text-center font-mono text-[8px] text-emerald-400 tracking-widest uppercase">
+                      ✨ VERIFICATION EMAIL SENT - CHECK YOUR INBOX
+                    </div>
+                  )}
                   <button 
                     type="submit"
-                    disabled={isLoading}
-                    className="w-full py-3 bg-[#C9A227] hover:bg-amber-500 text-black font-sans font-black text-xs uppercase rounded-xl flex items-center justify-center gap-2 cursor-pointer transition-all"
+                    disabled={isLoading || passwordStrength === 'weak'}
+                    className="w-full py-3 bg-[#C9A227] hover:bg-amber-500 text-black font-sans font-black text-xs uppercase rounded-xl flex items-center justify-center gap-2 cursor-pointer transition-all disabled:opacity-50"
                   >
                     <UserCheck className="w-4 h-4" />
                     {isLoading ? 'COMMITTING LEDGER STATE...' : 'GENERATE FIREBASE ACCOUNT'}
@@ -486,6 +760,62 @@ export default function LoginPortal({ user, onLogin, onLogout, onViewOrder, init
                     </form>
                   )}
                 </div>
+              )}
+
+              {/* FORGOT PASSWORD FORM */}
+              {activeMode === 'forgot-password' && (
+                <form onSubmit={handleForgotPassword} className="space-y-4">
+                  {!resetEmailSent ? (
+                    <>
+                      <div>
+                        <label className="font-mono text-[8px] text-neutral-500 block mb-1">ACCOUNT EMAIL ADDRESS</label>
+                        <input 
+                          type="email" 
+                          required 
+                          value={emailInput}
+                          onChange={e => setEmailInput(e.target.value)}
+                          placeholder="E.G. ABDUL@ZEROX.COM"
+                          className="w-full bg-neutral-900 border border-neutral-900 focus:border-[#C9A227] rounded-xl px-4 py-2.5 font-sans text-xs text-white focus:outline-none transition-colors"
+                        />
+                      </div>
+                      <p className="font-mono text-[8px] text-neutral-400 leading-relaxed">
+                        ENTER YOUR ACCOUNT EMAIL AND WE&apos;LL SEND YOU A SECURE PASSWORD RESET LINK
+                      </p>
+                      <button 
+                        type="submit"
+                        disabled={isLoading}
+                        className="w-full py-3 bg-[#C9A227] hover:bg-amber-500 text-black font-sans font-black text-xs uppercase rounded-xl flex items-center justify-center gap-2 cursor-pointer transition-all disabled:opacity-50"
+                      >
+                        <Key className="w-4 h-4" />
+                        {isLoading ? 'DISPATCHING RESET LINK...' : 'SEND RESET LINK'}
+                      </button>
+                      <button 
+                        type="button"
+                        onClick={() => { setActiveMode('login'); setError(''); setSuccess(''); }}
+                        className="w-full py-2 bg-neutral-900 hover:bg-neutral-800 border border-neutral-800 text-white rounded-xl font-mono text-[8px] uppercase tracking-wider cursor-pointer transition-colors"
+                      >
+                        BACK TO LOGIN
+                      </button>
+                    </>
+                  ) : (
+                    <div className="text-center space-y-4 py-4">
+                      <div className="flex justify-center">
+                        <CheckCircle className="w-12 h-12 text-emerald-500" />
+                      </div>
+                      <p className="font-sans text-sm text-white font-semibold">PASSWORD RESET EMAIL SENT</p>
+                      <p className="font-mono text-[8px] text-neutral-400 leading-relaxed">
+                        CHECK YOUR EMAIL FOR A SECURE RESET LINK. CLICK IT TO CREATE A NEW PASSWORD.
+                      </p>
+                      <button 
+                        type="button"
+                        onClick={() => { setActiveMode('login'); setResetEmailSent(false); setError(''); setSuccess(''); }}
+                        className="w-full py-2 bg-[#C9A227] hover:bg-amber-500 text-black rounded-xl font-mono text-[8px] uppercase tracking-wider font-bold cursor-pointer transition-colors"
+                      >
+                        RETURN TO LOGIN
+                      </button>
+                    </div>
+                  )}
+                </form>
               )}
 
               {/* SOCIAL BUTTONS SEGMENT */}

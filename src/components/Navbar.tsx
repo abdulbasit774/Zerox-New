@@ -7,8 +7,8 @@ import Logo from './Logo';
 interface NavbarProps {
   cartItems: CartItem[];
   user: UserProfile;
-  activeView: 'shop' | 'customizer' | 'anatomy' | 'vip' | 'admin' | 'order-confirmation';
-  onViewChange: (view: 'shop' | 'customizer' | 'anatomy' | 'vip' | 'admin') => void;
+  activeView: 'shop' | 'customizer' | 'anatomy' | 'vip' | 'admin' | 'order-confirmation' | 'dashboard' | 'wishlist';
+  onViewChange: (view: 'shop' | 'customizer' | 'anatomy' | 'vip' | 'admin' | 'dashboard' | 'wishlist') => void;
   onOpenCart: () => void;
 }
 
@@ -31,7 +31,7 @@ export default function Navbar({
     { id: 'admin', label: 'ADMIN CONTROL' }
   ] as const;
 
-  const handleLinkClick = (id: 'shop' | 'customizer' | 'anatomy' | 'vip' | 'admin') => {
+  const handleLinkClick = (id: 'shop' | 'customizer' | 'anatomy' | 'vip' | 'admin' | 'dashboard' | 'wishlist') => {
     onViewChange(id);
     setMobileMenuOpen(false);
   };
@@ -88,7 +88,7 @@ export default function Navbar({
 
             {/* VIP User Account Trigger */}
             <button
-              onClick={() => handleLinkClick('vip')}
+              onClick={() => handleLinkClick('dashboard')}
               className={`p-2 rounded-full border bg-transparent cursor-pointer transition-all flex items-center justify-center relative ${user.loggedIn ? 'border-[#C9A227] text-[#C9A227] hover:bg-[#C9A227]/10' : 'border-neutral-900 text-neutral-400 hover:text-white hover:border-neutral-700'}`}
             >
               <User className="w-4.5 h-4.5" />

@@ -22,6 +22,7 @@ import KineticScrollStorytelling from './components/KineticScrollStorytelling';
 import AdminPanel from './components/AdminPanel';
 import CustomCursor from './components/CustomCursor';
 import WayfinderConsole from './components/WayfinderConsole';
+import CustomerDashboard from './components/CustomerDashboard';
 
 const getStudioLightingStyle = (hex: string) => {
   if (!hex) return {};
@@ -36,7 +37,7 @@ const getStudioLightingStyle = (hex: string) => {
 
 export default function App() {
   const [showSplash, setShowSplash] = useState(true);
-  const [activeView, setActiveView] = useState<'shop' | 'customizer' | 'anatomy' | 'vip' | 'admin' | 'wishlist'>('shop');
+  const [activeView, setActiveView] = useState<'shop' | 'customizer' | 'anatomy' | 'vip' | 'admin' | 'wishlist' | 'dashboard'>('shop');
   const [cart, setCart] = useState<CartItem[]>([]);
   const [isCartOpen, setIsCartOpen] = useState(false);
   const [selectedSneaker, setSelectedSneaker] = useState<Sneaker | null>(null);
@@ -346,20 +347,38 @@ export default function App() {
                                     }}
                                     className="px-0 cursor-pointer"
                                   >
-                                    <span className="w-full sm:w-auto bg-gradient-to-r from-amber-600 to-[#C9A227] hover:from-amber-500 hover:to-amber-400 text-black font-sans font-black text-xs uppercase py-3.5 px-8 rounded-xl flex items-center justify-center gap-2 transition-all duration-300 shadow-[0_4px_20px_rgba(201,162,39,0.25)]">
+                                    <motion.span 
+                                      whileHover={{ scale: 1.05 }}
+                                      whileTap={{ scale: 0.98 }}
+                                      className="w-full sm:w-auto bg-gradient-to-r from-amber-600 to-[#C9A227] hover:from-amber-500 hover:to-amber-400 text-black font-sans font-black text-xs uppercase py-3.5 px-8 rounded-xl flex items-center justify-center gap-2 transition-all duration-300 shadow-[0_4px_20px_rgba(201,162,39,0.25)] hover:shadow-[0_8px_35px_rgba(201,162,39,0.4)]"
+                                    >
                                       EXPLORE PLAZA STORE
-                                      <ArrowRight className="w-4 h-4" />
-                                    </span>
+                                      <motion.span
+                                        animate={{ x: [0, 4, 0] }}
+                                        transition={{ duration: 2, repeat: Infinity }}
+                                      >
+                                        <ArrowRight className="w-4 h-4" />
+                                      </motion.span>
+                                    </motion.span>
                                   </MagneticButton>
 
                                   <MagneticButton
                                     onClick={() => setActiveView('customizer')}
                                     className="px-0 cursor-pointer"
                                   >
-                                    <span className="w-full sm:w-auto bg-neutral-950 hover:bg-neutral-900 text-white border border-neutral-800 font-mono text-xs tracking-widest uppercase py-3.5 px-8 rounded-xl flex items-center justify-center gap-2 transition-colors">
+                                    <motion.span 
+                                      whileHover={{ scale: 1.05, borderColor: 'rgba(201, 162, 39, 0.6)' }}
+                                      whileTap={{ scale: 0.98 }}
+                                      className="w-full sm:w-auto bg-neutral-950 hover:bg-neutral-900 text-white border border-neutral-800 font-mono text-xs tracking-widest uppercase py-3.5 px-8 rounded-xl flex items-center justify-center gap-2 transition-all duration-300 hover:shadow-[0_0_20px_rgba(201,162,39,0.3)]"
+                                    >
                                       BESPOKE DESIGN LAB
-                                      <Zap className="w-4 h-4 text-[#C9A227]" />
-                                    </span>
+                                      <motion.span
+                                        animate={{ rotate: [0, 10, 0] }}
+                                        transition={{ duration: 2, repeat: Infinity }}
+                                      >
+                                        <Zap className="w-4 h-4 text-[#C9A227]" />
+                                      </motion.span>
+                                    </motion.span>
                                   </MagneticButton>
                                 </div>
                               </div>
@@ -462,8 +481,9 @@ export default function App() {
                                       initial={{ opacity: 0, y: 25 }}
                                       animate={{ opacity: 1, y: 0 }}
                                       transition={{ delay: idx * 0.08, duration: 0.5 }}
+                                      whileHover={{ y: -8 }}
                                       onClick={() => setSelectedSneaker(s)}
-                                      className="group bg-neutral-950/40 border border-neutral-900 hover:border-[#C9A227]/40 rounded-3xl p-5 relative overflow-hidden transition-all duration-500 flex flex-col justify-between cursor-pointer select-none hover:-translate-y-1 hover:shadow-[0_15px_30px_rgba(0,0,0,0.6)]"
+                                      className="group bg-neutral-950/40 border border-neutral-900 hover:border-[#C9A227]/40 rounded-3xl p-5 relative overflow-hidden transition-all duration-500 flex flex-col justify-between cursor-pointer select-none hover:shadow-[0_25px_50px_rgba(201,162,39,0.2)]"
                                     >
                                       {/* Top Badge Details */}
                                       <div className="flex justify-between items-center z-10 relative">
@@ -813,6 +833,20 @@ export default function App() {
                               })}
                             </div>
                           )}
+                        </motion.div>
+                      );
+
+                    /* VIEW 7: CUSTOMER DASHBOARD */
+                    case 'dashboard':
+                      return (
+                        <motion.div
+                          key="dashboard"
+                          initial={{ opacity: 0 }}
+                          animate={{ opacity: 1 }}
+                          exit={{ opacity: 0 }}
+                          className="w-full"
+                        >
+                          <CustomerDashboard user={user} onLogout={() => setUser({ ...user, loggedIn: false })} />
                         </motion.div>
                       );
 

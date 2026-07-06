@@ -6,9 +6,21 @@ import {
   createUserWithEmailAndPassword, 
   signOut,
   updateProfile,
+  updateEmail,
+  updatePassword,
+  sendPasswordResetEmail,
+  sendEmailVerification,
+  confirmPasswordReset,
+  verifyPasswordResetCode,
   User,
   GoogleAuthProvider,
-  signInWithPopup
+  signInWithPopup,
+  FacebookAuthProvider,
+  OAuthProvider,
+  PhoneAuthProvider,
+  RecaptchaVerifier,
+  signInWithPhoneNumber,
+  signInWithCredential
 } from 'firebase/auth';
 import { 
   getFirestore, 
@@ -46,6 +58,18 @@ const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
 export const auth = getAuth(app);
 export const db = getFirestore(app);
 
+// Configure Authentication Providers
+export const googleProvider = new GoogleAuthProvider();
+googleProvider.addScope('profile');
+googleProvider.addScope('email');
+
+export const facebookProvider = new FacebookAuthProvider();
+facebookProvider.addScope('email');
+
+export const appleProvider = new OAuthProvider('apple.com');
+appleProvider.addScope('email');
+appleProvider.addScope('name');
+
 // Collection Reference helpers
 export const usersCol = collection(db, 'users');
 export const productsCol = collection(db, 'products');
@@ -58,6 +82,229 @@ export const cartCol = collection(db, 'cart');
 export const inventoryCol = collection(db, 'inventory');
 export const notificationsCol = collection(db, 'notifications');
 export const paymentsCol = collection(db, 'payments');
+export const transactionsCol = collection(db, 'transactions');
+export const paymentMethodsCol = collection(db, 'paymentMethods');
+export const shippingMethodsCol = collection(db, 'shippingMethods');
+export const taxesCol = collection(db, 'taxes');
+export const giftCardsCol = collection(db, 'giftCards');
+export const returnsCol = collection(db, 'returns');
+export const refundsCol = collection(db, 'refunds');
+export const adminLogsCol = collection(db, 'adminLogs');
+export const brandsCol = collection(db, 'brands');
+export const bannersCol = collection(db, 'banners');
+export const supportTicketsCol = collection(db, 'supportTickets');
+export const rolesCol = collection(db, 'roles');
+
+// User Profile Management Helpers
+export async function createUserProfile(uid: string, data: {
+  email: string;
+  fullName?: string;
+  phone?: string;
+  photoURL?: string;
+  provider: string;
+  role?: string;
+}) {
+  try {
+    const userRef = doc(db, 'users', uid);
+    const userDoc = await getDoc(userRef);
+    
+    if (!userDoc.exists()) {
+      // Create new user document with complete schema
+      await setDoc(userRef, {
+        uid,
+        fullName: data.fullName || 'User',
+        email: data.email,
+        phone: data.phone || '',
+        photoURL: data.photoURL || '',
+        role: data.role || 'user',
+        provider: data.provider,
+        emailVerified: false,
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+        lastLogin: serverTimestamp(),
+        status: 'active',
+        identityVerified: false,
+        
+        // Legacy compatibility fields
+        name: data.fullName || 'Collector',
+        membershipTier: 'Challenger',
+        creatorRank: 999,
+        challengerPoints: 100,
+      });
+    } else {
+      // Update last login
+      await updateDoc(userRef, {
+        lastLogin: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      });
+    }
+  } catch (error) {
+    console.error('Error creating/updating user profile:', error);
+    throw error;
+  }
+}
+
+export async function updateUserProfile(uid: string, updates: any) {
+  try {
+    const userRef = doc(db, 'users', uid);
+    await updateDoc(userRef, {
+      ...updates,
+      updatedAt: serverTimestamp(),
+    });
+  } catch (error) {
+    console.error('Error updating user profile:', error);
+    throw error;
+  }
+}
+
+// Payment Processing Helpers
+export async function createPayment(paymentData: {
+  orderId: string;
+  userId: string;
+  amount: number;
+  method: string;
+  status: 'pending' | 'completed' | 'failed' | 'cancelled';
+  cardLast4?: string;
+  cardBrand?: string;
+}) {
+  try {
+    const paymentId = `PAY-${Date.now()}-${Math.random().toString(36).substr(2, 9).toUpperCase()}`;
+    await setDoc(doc(db, 'payments', paymentId), {
+      ...paymentData,
+      paymentId,
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+    });
+    return paymentId;
+  } catch (error) {
+    console.error('Error creating payment:', error);
+    throw error;
+  }
+}
+
+export async function createTransaction(transactionData: {
+  paymentId: string;
+  orderId: string;
+  userId: string;
+  amount: number;
+  type: 'payment' | 'refund' | 'adjustment';
+  status: 'pending' | 'completed' | 'failed';
+}) {
+  try {
+    const transactionId = `TXN-${Date.now()}-${Math.random().toString(36).substr(2, 9).toUpperCase()}`;
+    await setDoc(doc(db, 'transactions', transactionId), {
+      ...transactionData,
+      transactionId,
+      createdAt: serverTimestamp(),
+    });
+    return transactionId;
+  } catch (error) {
+    console.error('Error creating transaction:', error);
+    throw error;
+  }
+}
+
+export async function applyCoupon(couponCode: string) {
+  try {
+    const couponRef = doc(db, 'coupons', couponCode.toUpperCase());
+    const couponSnap = await getDoc(couponRef);
+    
+    if (!couponSnap.exists()) {
+      throw new Error('Coupon not found');
+    }
+    
+    const coupon = couponSnap.data();
+    
+    if (!coupon.active) {
+      throw new Error('Coupon is inactive');
+    }
+    
+    if (coupon.expiryDate && new Date(coupon.expiryDate) < new Date()) {
+      throw new Error('Coupon has expired');
+    }
+    
+    if (coupon.usageLimit && coupon.usageCount >= coupon.usageLimit) {
+      throw new Error('Coupon usage limit reached');
+    }
+    
+    return coupon;
+  } catch (error) {
+    console.error('Error applying coupon:', error);
+    throw error;
+  }
+}
+
+export async function validateGiftCard(giftCardCode: string) {
+  try {
+    const giftCardRef = doc(db, 'giftCards', giftCardCode.toUpperCase());
+    const giftCardSnap = await getDoc(giftCardRef);
+    
+    if (!giftCardSnap.exists()) {
+      throw new Error('Gift card not found');
+    }
+    
+    const giftCard = giftCardSnap.data();
+    
+    if (giftCard.balance <= 0) {
+      throw new Error('Gift card balance is zero');
+    }
+    
+    if (giftCard.expiryDate && new Date(giftCard.expiryDate) < new Date()) {
+      throw new Error('Gift card has expired');
+    }
+    
+    return giftCard;
+  } catch (error) {
+    console.error('Error validating gift card:', error);
+    throw error;
+  }
+}
+
+export async function createRefund(refundData: {
+  orderId: string;
+  paymentId: string;
+  userId: string;
+  amount: number;
+  reason: string;
+  type: 'full' | 'partial';
+  status: 'pending' | 'approved' | 'rejected' | 'completed';
+}) {
+  try {
+    const refundId = `REF-${Date.now()}-${Math.random().toString(36).substr(2, 9).toUpperCase()}`;
+    await setDoc(doc(db, 'refunds', refundId), {
+      ...refundData,
+      refundId,
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+    });
+    return refundId;
+  } catch (error) {
+    console.error('Error creating refund:', error);
+    throw error;
+  }
+}
+
+export async function createReturn(returnData: {
+  orderId: string;
+  userId: string;
+  items: Array<{ itemId: string; quantity: number }>;
+  reason: string;
+  status: 'requested' | 'approved' | 'rejected' | 'shipped' | 'received' | 'refunded';
+}) {
+  try {
+    const returnId = `RET-${Date.now()}-${Math.random().toString(36).substr(2, 9).toUpperCase()}`;
+    await setDoc(doc(db, 'returns', returnId), {
+      ...returnData,
+      returnId,
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+    });
+    return returnId;
+  } catch (error) {
+    console.error('Error creating return:', error);
+    throw error;
+  }
+}
 
 // Seed Helper: Runs only if the products collection is empty
 export async function seedInitialDatabase() {
@@ -212,5 +459,62 @@ export async function seedInitialDatabase() {
     console.log('Database seeded successfully.');
   } catch (error) {
     console.error('Error seeding initial database: ', error);
+  }
+}
+
+// Admin Helper Functions
+export async function getUserRole(uid: string): Promise<string> {
+  try {
+    const userRef = doc(db, 'users', uid);
+    const userDoc = await getDoc(userRef);
+    return userDoc.exists() ? (userDoc.data().role || 'user') : 'user';
+  } catch (error) {
+    console.error('Error getting user role:', error);
+    return 'user';
+  }
+}
+
+export async function setUserRole(uid: string, role: 'admin' | 'manager' | 'user' | 'editor' | 'warehouse' | 'support' | 'marketing') {
+  try {
+    const userRef = doc(db, 'users', uid);
+    await updateDoc(userRef, { role, updatedAt: serverTimestamp() });
+    await logAdminAction('role_change', `Changed user ${uid} role to ${role}`, { uid, role });
+  } catch (error) {
+    console.error('Error setting user role:', error);
+    throw error;
+  }
+}
+
+export async function isAdmin(uid: string): Promise<boolean> {
+  try {
+    const role = await getUserRole(uid);
+    return ['admin', 'manager'].includes(role);
+  } catch (error) {
+    return false;
+  }
+}
+
+export async function logAdminAction(action: string, description: string, details?: any) {
+  try {
+    await addDoc(adminLogsCol, {
+      action,
+      description,
+      details: details || {},
+      timestamp: serverTimestamp(),
+      createdAt: new Date().toISOString(),
+    });
+  } catch (error) {
+    console.error('Error logging admin action:', error);
+  }
+}
+
+export async function getAdminLogs(limit_count: number = 100) {
+  try {
+    const q = query(adminLogsCol, orderBy('timestamp', 'desc'), limit(limit_count));
+    const snap = await getDocs(q);
+    return snap.docs.map(d => ({ id: d.id, ...d.data() }));
+  } catch (error) {
+    console.error('Error fetching admin logs:', error);
+    return [];
   }
 }
