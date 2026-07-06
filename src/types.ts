@@ -41,12 +41,33 @@ export interface CartItem {
 }
 
 export interface UserProfile {
-  name: string;
+  // Authentication
+  uid?: string;
   email: string;
+  name: string;
+  phone?: string;
+  photoURL?: string;
   loggedIn: boolean;
+  
+  // Profile Management
+  fullName?: string;
+  emailVerified?: boolean;
+  provider?: 'email' | 'google' | 'apple' | 'facebook' | 'phone';
+  role?: 'user' | 'admin' | 'moderator';
+  
+  // Membership & Status
   membershipTier: 'Challenger' | 'Elite' | 'Apex Founder';
   creatorRank: number;
   challengerPoints: number;
+  status?: 'active' | 'inactive' | 'suspended';
+  
+  // Metadata
+  createdAt?: string;
+  updatedAt?: string;
+  lastLogin?: string;
+  identityVerified?: boolean;
+  
+  // Order History
   orderHistory: Order[];
 }
 

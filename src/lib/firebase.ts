@@ -6,9 +6,21 @@ import {
   createUserWithEmailAndPassword, 
   signOut,
   updateProfile,
+  updateEmail,
+  updatePassword,
+  sendPasswordResetEmail,
+  sendEmailVerification,
+  confirmPasswordReset,
+  verifyPasswordResetCode,
   User,
   GoogleAuthProvider,
-  signInWithPopup
+  signInWithPopup,
+  FacebookAuthProvider,
+  OAuthProvider,
+  PhoneAuthProvider,
+  RecaptchaVerifier,
+  signInWithPhoneNumber,
+  signInWithCredential
 } from 'firebase/auth';
 import { 
   getFirestore, 
@@ -46,6 +58,18 @@ const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
 export const auth = getAuth(app);
 export const db = getFirestore(app);
 
+// Configure Authentication Providers
+export const googleProvider = new GoogleAuthProvider();
+googleProvider.addScope('profile');
+googleProvider.addScope('email');
+
+export const facebookProvider = new FacebookAuthProvider();
+facebookProvider.addScope('email');
+
+export const appleProvider = new OAuthProvider('apple.com');
+appleProvider.addScope('email');
+appleProvider.addScope('name');
+
 // Collection Reference helpers
 export const usersCol = collection(db, 'users');
 export const productsCol = collection(db, 'products');
@@ -58,6 +82,68 @@ export const cartCol = collection(db, 'cart');
 export const inventoryCol = collection(db, 'inventory');
 export const notificationsCol = collection(db, 'notifications');
 export const paymentsCol = collection(db, 'payments');
+
+// User Profile Management Helpers
+export async function createUserProfile(uid: string, data: {
+  email: string;
+  fullName?: string;
+  phone?: string;
+  photoURL?: string;
+  provider: string;
+  role?: string;
+}) {
+  try {
+    const userRef = doc(db, 'users', uid);
+    const userDoc = await getDoc(userRef);
+    
+    if (!userDoc.exists()) {
+      // Create new user document with complete schema
+      await setDoc(userRef, {
+        uid,
+        fullName: data.fullName || 'User',
+        email: data.email,
+        phone: data.phone || '',
+        photoURL: data.photoURL || '',
+        role: data.role || 'user',
+        provider: data.provider,
+        emailVerified: false,
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+        lastLogin: serverTimestamp(),
+        status: 'active',
+        identityVerified: false,
+        
+        // Legacy compatibility fields
+        name: data.fullName || 'Collector',
+        membershipTier: 'Challenger',
+        creatorRank: 999,
+        challengerPoints: 100,
+      });
+    } else {
+      // Update last login
+      await updateDoc(userRef, {
+        lastLogin: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      });
+    }
+  } catch (error) {
+    console.error('Error creating/updating user profile:', error);
+    throw error;
+  }
+}
+
+export async function updateUserProfile(uid: string, updates: any) {
+  try {
+    const userRef = doc(db, 'users', uid);
+    await updateDoc(userRef, {
+      ...updates,
+      updatedAt: serverTimestamp(),
+    });
+  } catch (error) {
+    console.error('Error updating user profile:', error);
+    throw error;
+  }
+}
 
 // Seed Helper: Runs only if the products collection is empty
 export async function seedInitialDatabase() {

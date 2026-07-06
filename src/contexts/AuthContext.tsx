@@ -8,13 +8,19 @@ export interface AuthUser {
   email: string | null;
   displayName: string | null;
   photoURL: string | null;
+  emailVerified: boolean;
+  role: 'user' | 'admin' | 'moderator';
   profile?: {
     name: string;
+    fullName?: string;
     membershipTier: 'Challenger' | 'Elite' | 'Apex Founder';
     creatorRank: number;
     challengerPoints: number;
     identityVerified: boolean;
     createdAt: string;
+    provider?: string;
+    status?: 'active' | 'inactive' | 'suspended';
+    lastLogin?: string;
   };
 }
 
@@ -22,6 +28,9 @@ interface AuthContextType {
   user: AuthUser | null;
   loading: boolean;
   loggedIn: boolean;
+  isAdmin: boolean;
+  isModerator: boolean;
+  canAccessAdmin: boolean;
   logout: () => Promise<void>;
 }
 
@@ -49,10 +58,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             email: firebaseUser.email,
             displayName: firebaseUser.displayName,
             photoURL: firebaseUser.photoURL,
+            emailVerified: firebaseUser.emailVerified,
+            role: 'user', // default role
           };
 
           if (docSnap.exists()) {
-            authUser.profile = docSnap.data() as AuthUser['profile'];
+            const userData = docSnap.data();
+            authUser.profile = userData as AuthUser['profile'];
+            authUser.role = userData.role || 'user';
           }
 
           setUser(authUser);
@@ -85,6 +98,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     user,
     loading,
     loggedIn: !!user,
+    isAdmin: user?.role === 'admin' || false,
+    isModerator: user?.role === 'moderator' || false,
+    canAccessAdmin: (user?.role === 'admin' || user?.role === 'moderator') || false,
     logout,
   };
 
