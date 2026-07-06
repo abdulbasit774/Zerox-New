@@ -1,0 +1,6 @@
+{
+  "name": "ZEROX - Premium Luxury Footwear",
+  "description": "ZEROX is a premium luxury footwear brand built for athletes, creators, dreamers, and people who challenge their limits every day.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
