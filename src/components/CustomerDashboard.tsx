@@ -2,12 +2,13 @@ import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   User, LogOut, Heart, Package, Settings, CreditCard, Bell, Lock, ChevronRight,
-  MapPin, Mail, Phone, Edit2, Save, X, ShieldCheck, Award, TrendingUp
+  MapPin, Mail, Phone, Edit2, Save, X, ShieldCheck, Award, TrendingUp, 
+  Download, Undo2, AlertCircle, CheckCircle, Clock, Truck, Check, Eye
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { UserProfile } from '../types';
 import { db } from '../lib/firebase';
-import { collection, getDocs, query, where } from 'firebase/firestore';
+import { collection, getDocs, query, where, doc, updateDoc, setDoc, deleteDoc, addDoc, serverTimestamp } from 'firebase/firestore';
 
 type DashboardTab = 'profile' | 'orders' | 'addresses' | 'wishlist' | 'settings' | 'security';
 
@@ -25,20 +26,32 @@ export default function CustomerDashboard({ user: propsUser, onLogout }: Custome
   const [activeTab, setActiveTab] = useState<DashboardTab>('profile');
   const [orders, setOrders] = useState<any[]>([]);
   const [wishlist, setWishlist] = useState<string[]>([]);
+  const [savedAddresses, setSavedAddresses] = useState<any[]>([]);
+  const [paymentMethods, setPaymentMethods] = useState<any[]>([]);
+  const [notifications, setNotifications] = useState<any[]>([]);
   const [editingProfile, setEditingProfile] = useState(false);
   const [isLoggingOut, setIsLoggingOut] = useState(false);
   const [selectedOrderForDetail, setSelectedOrderForDetail] = useState<any | null>(null);
+  const [showAddressForm, setShowAddressForm] = useState(false);
+  const [showRequestForm, setShowRequestForm] = useState<'cancel' | 'return' | 'refund' | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   // Profile edit states
   const [editName, setEditName] = useState(displayUser?.displayName || '');
   const [editPhone, setEditPhone] = useState('+1 (000) 000-0000');
+  const [editEmail, setEditEmail] = useState(displayUser?.email || '');
+  const [editPassword, setEditPassword] = useState('');
+  const [editPasswordConfirm, setEditPasswordConfirm] = useState('');
 
   useEffect(() => {
     if (loggedIn) {
       loadWishlist();
-      // Try to fetch orders if auth context is available
       if (authContext.user?.uid) {
         fetchOrders();
+        fetchAddresses();
+        fetchPaymentMethods();
+        fetchNotifications();
       }
     }
   }, [loggedIn, authContext.user?.uid]);
@@ -51,12 +64,115 @@ export default function CustomerDashboard({ user: propsUser, onLogout }: Custome
       setOrders(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
     } catch (error) {
       console.error('Error fetching orders:', error);
+      setError('Failed to load orders');
+    }
+  };
+
+  const fetchAddresses = async () => {
+    try {
+      if (!authContext.user?.uid) return;
+      const q = query(collection(db, `users/${authContext.user.uid}/addresses`));
+      const snapshot = await getDocs(q);
+      setSavedAddresses(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+    } catch (error) {
+      console.error('Error fetching addresses:', error);
+    }
+  };
+
+  const fetchPaymentMethods = async () => {
+    try {
+      if (!authContext.user?.uid) return;
+      const q = query(collection(db, `users/${authContext.user.uid}/paymentMethods`));
+      const snapshot = await getDocs(q);
+      setPaymentMethods(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+    } catch (error) {
+      console.error('Error fetching payment methods:', error);
+    }
+  };
+
+  const fetchNotifications = async () => {
+    try {
+      if (!authContext.user?.uid) return;
+      const q = query(collection(db, `users/${authContext.user.uid}/notifications`));
+      const snapshot = await getDocs(q);
+      setNotifications(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+    } catch (error) {
+      console.error('Error fetching notifications:', error);
     }
   };
 
   const loadWishlist = () => {
     const saved = localStorage.getItem('zerox_wishlist');
     setWishlist(saved ? JSON.parse(saved) : []);
+  };
+
+  const saveWishlist = (items: string[]) => {
+    setWishlist(items);
+    localStorage.setItem('zerox_wishlist', JSON.stringify(items));
+  };
+
+  const addAddress = async (address: any) => {
+    try {
+      setLoading(true);
+      if (!authContext.user?.uid) return;
+      await addDoc(collection(db, `users/${authContext.user.uid}/addresses`), {
+        ...address,
+        createdAt: serverTimestamp()
+      });
+      await fetchAddresses();
+      setShowAddressForm(false);
+      setError(null);
+    } catch (err) {
+      setError('Failed to add address');
+      console.error('Error adding address:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const deleteAddress = async (addressId: string) => {
+    try {
+      setLoading(true);
+      if (!authContext.user?.uid) return;
+      await deleteDoc(doc(db, `users/${authContext.user.uid}/addresses`, addressId));
+      await fetchAddresses();
+    } catch (err) {
+      setError('Failed to delete address');
+      console.error('Error deleting address:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const submitRequest = async (type: 'cancel' | 'return' | 'refund', reason: string) => {
+    try {
+      setLoading(true);
+      if (!authContext.user?.uid || !selectedOrderForDetail) return;
+      
+      await addDoc(collection(db, 'requests'), {
+        userId: authContext.user.uid,
+        orderId: selectedOrderForDetail.id,
+        type,
+        reason,
+        status: 'PENDING',
+        createdAt: serverTimestamp()
+      });
+      
+      setShowRequestForm(null);
+      setError(null);
+    } catch (err) {
+      setError('Failed to submit request');
+      console.error('Error submitting request:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const generateInvoicePDF = () => {
+    if (!selectedOrderForDetail) return;
+    console.log('[v0] Generating PDF for order:', selectedOrderForDetail.id);
+    // PDF generation PENDING CONFIGURATION - requires jsPDF or similar library
+    alert('PDF invoice download feature requires PDF library configuration');
   };
 
   const handleLogout = async () => {
@@ -384,15 +500,96 @@ export default function CustomerDashboard({ user: propsUser, onLogout }: Custome
               >
                 <div className="flex items-center justify-between mb-8">
                   <h2 className="text-2xl font-black">Saved Addresses</h2>
-                  <button className="px-4 py-2 bg-[#C9A227] hover:bg-amber-500 text-black rounded-lg font-mono text-xs font-semibold tracking-wider uppercase cursor-pointer transition-colors">
-                    ADD ADDRESS
+                  <button 
+                    onClick={() => setShowAddressForm(!showAddressForm)}
+                    className="px-4 py-2 bg-[#C9A227] hover:bg-amber-500 text-black rounded-lg font-mono text-xs font-semibold tracking-wider uppercase cursor-pointer transition-colors"
+                  >
+                    {showAddressForm ? '- CANCEL' : '+ ADD ADDRESS'}
                   </button>
                 </div>
-                <div className="text-center py-16">
-                  <MapPin className="w-12 h-12 text-neutral-700 mx-auto mb-4" />
-                  <p className="font-mono text-sm text-neutral-400 mb-2">NO ADDRESSES YET</p>
-                  <p className="font-sans text-neutral-500">Add a shipping address for faster checkout</p>
-                </div>
+
+                {showAddressForm && (
+                  <motion.div
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className="bg-neutral-900/50 border border-neutral-800 rounded-xl p-6 mb-6 space-y-4"
+                  >
+                    <div className="grid grid-cols-2 gap-4">
+                      <input
+                        type="text"
+                        placeholder="Full Name"
+                        className="col-span-2 bg-neutral-950 border border-neutral-800 rounded-lg p-3 text-white placeholder-neutral-600 focus:border-[#C9A227] focus:outline-none"
+                      />
+                      <input
+                        type="text"
+                        placeholder="Address"
+                        className="col-span-2 bg-neutral-950 border border-neutral-800 rounded-lg p-3 text-white placeholder-neutral-600 focus:border-[#C9A227] focus:outline-none"
+                      />
+                      <input
+                        type="text"
+                        placeholder="City"
+                        className="bg-neutral-950 border border-neutral-800 rounded-lg p-3 text-white placeholder-neutral-600 focus:border-[#C9A227] focus:outline-none"
+                      />
+                      <input
+                        type="text"
+                        placeholder="State"
+                        className="bg-neutral-950 border border-neutral-800 rounded-lg p-3 text-white placeholder-neutral-600 focus:border-[#C9A227] focus:outline-none"
+                      />
+                      <input
+                        type="text"
+                        placeholder="ZIP"
+                        className="bg-neutral-950 border border-neutral-800 rounded-lg p-3 text-white placeholder-neutral-600 focus:border-[#C9A227] focus:outline-none"
+                      />
+                      <input
+                        type="tel"
+                        placeholder="Phone"
+                        className="bg-neutral-950 border border-neutral-800 rounded-lg p-3 text-white placeholder-neutral-600 focus:border-[#C9A227] focus:outline-none"
+                      />
+                    </div>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => setShowAddressForm(false)}
+                        className="flex-1 py-2 bg-neutral-900 hover:bg-neutral-800 border border-neutral-800 text-white rounded-lg font-mono text-xs font-semibold tracking-wider uppercase cursor-pointer transition-colors"
+                      >
+                        CANCEL
+                      </button>
+                      <button
+                        onClick={() => setShowAddressForm(false)}
+                        disabled={loading}
+                        className="flex-1 py-2 bg-[#C9A227] hover:bg-amber-500 text-black rounded-lg font-mono text-xs font-semibold tracking-wider uppercase cursor-pointer transition-colors disabled:opacity-50"
+                      >
+                        {loading ? 'SAVING...' : 'SAVE'}
+                      </button>
+                    </div>
+                  </motion.div>
+                )}
+
+                {savedAddresses.length === 0 ? (
+                  <div className="text-center py-16">
+                    <MapPin className="w-12 h-12 text-neutral-700 mx-auto mb-4" />
+                    <p className="font-mono text-sm text-neutral-400 mb-2">NO ADDRESSES YET</p>
+                    <p className="font-sans text-neutral-500">Add a shipping address for faster checkout</p>
+                  </div>
+                ) : (
+                  <div className="grid gap-4">
+                    {savedAddresses.map((addr) => (
+                      <div key={addr.id} className="bg-neutral-900/50 border border-neutral-800 rounded-lg p-4 flex items-start justify-between">
+                        <div>
+                          <p className="font-sans font-semibold text-white mb-1">{addr.name}</p>
+                          <p className="text-sm text-neutral-400 mb-1">{addr.address}</p>
+                          <p className="text-sm text-neutral-400">{addr.city}, {addr.state} {addr.zip}</p>
+                        </div>
+                        <button
+                          onClick={() => deleteAddress(addr.id)}
+                          disabled={loading}
+                          className="p-2 hover:bg-red-900/20 rounded-lg transition-colors disabled:opacity-50"
+                        >
+                          <X className="w-4 h-4 text-red-400" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </motion.div>
             )}
 
@@ -604,18 +801,99 @@ export default function CustomerDashboard({ user: propsUser, onLogout }: Custome
                   </div>
                 )}
 
+                {/* Order Tracking Timeline */}
+                {selectedOrderForDetail.status && (
+                  <div>
+                    <p className="font-mono text-xs text-neutral-500 tracking-wider uppercase mb-4">Tracking Timeline</p>
+                    <div className="space-y-3">
+                      {[
+                        { status: 'PENDING', label: 'Order Placed', icon: Clock },
+                        { status: 'PROCESSING', label: 'Processing', icon: Clock },
+                        { status: 'SHIPPED', label: 'Shipped', icon: Truck },
+                        { status: 'DELIVERED', label: 'Delivered', icon: Check }
+                      ].map((step, idx) => {
+                        const isCompleted = ['PENDING', 'PROCESSING', 'SHIPPED', 'DELIVERED'].indexOf(step.status) <= ['PENDING', 'PROCESSING', 'SHIPPED', 'DELIVERED'].indexOf(selectedOrderForDetail.status);
+                        const StepIcon = step.icon;
+                        return (
+                          <div key={idx} className="flex gap-4">
+                            <div className="flex flex-col items-center">
+                              <div className={`w-8 h-8 rounded-full flex items-center justify-center ${isCompleted ? 'bg-emerald-500 text-black' : 'bg-neutral-800 text-neutral-500'}`}>
+                                <StepIcon className="w-4 h-4" />
+                              </div>
+                              {idx < 3 && <div className={`w-0.5 h-8 ${isCompleted ? 'bg-emerald-500' : 'bg-neutral-800'}`} />}
+                            </div>
+                            <div className="pt-1">
+                              <p className={`font-sans font-semibold ${isCompleted ? 'text-white' : 'text-neutral-500'}`}>{step.label}</p>
+                              {isCompleted && <p className="text-xs text-neutral-400">{new Date().toLocaleDateString()}</p>}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
                 {/* Action Buttons */}
-                <div className="flex gap-3 pt-4 border-t border-neutral-900">
+                <div className="grid grid-cols-2 gap-2 pt-4 border-t border-neutral-900">
                   <button
                     onClick={() => setSelectedOrderForDetail(null)}
-                    className="flex-1 py-3 bg-neutral-900 hover:bg-neutral-800 border border-neutral-800 text-white rounded-lg font-mono text-sm font-semibold tracking-wider uppercase cursor-pointer transition-colors"
+                    className="py-2.5 bg-neutral-900 hover:bg-neutral-800 border border-neutral-800 text-white rounded-lg font-mono text-xs font-semibold tracking-wider uppercase cursor-pointer transition-colors"
                   >
                     CLOSE
                   </button>
-                  <button className="flex-1 py-3 bg-[#C9A227] hover:bg-amber-500 text-black rounded-lg font-mono text-sm font-semibold tracking-wider uppercase cursor-pointer transition-colors">
-                    CONTACT SUPPORT
+                  <button
+                    onClick={generateInvoicePDF}
+                    className="py-2.5 bg-neutral-900 hover:bg-neutral-800 border border-neutral-800 text-[#C9A227] rounded-lg font-mono text-xs font-semibold tracking-wider uppercase cursor-pointer transition-colors flex items-center justify-center gap-1"
+                  >
+                    <Download className="w-3.5 h-3.5" />
+                    PDF
+                  </button>
+                  <button
+                    onClick={() => setShowRequestForm('return')}
+                    className="py-2.5 bg-neutral-900 hover:bg-neutral-800 border border-neutral-800 text-amber-400 rounded-lg font-mono text-xs font-semibold tracking-wider uppercase cursor-pointer transition-colors"
+                  >
+                    RETURN
+                  </button>
+                  <button
+                    onClick={() => setShowRequestForm('refund')}
+                    className="py-2.5 bg-neutral-900 hover:bg-neutral-800 border border-neutral-800 text-rose-400 rounded-lg font-mono text-xs font-semibold tracking-wider uppercase cursor-pointer transition-colors"
+                  >
+                    REFUND
                   </button>
                 </div>
+
+                {/* Request Form */}
+                {showRequestForm && (
+                  <motion.div
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className="bg-neutral-900/50 border border-amber-500/30 rounded-lg p-4 space-y-3"
+                  >
+                    <p className="font-mono text-xs text-amber-400 tracking-wider uppercase">Submit {showRequestForm.toUpperCase()} Request</p>
+                    <textarea
+                      placeholder="Please explain your reason..."
+                      className="w-full bg-neutral-950 border border-neutral-800 rounded-lg p-2 text-white text-sm placeholder-neutral-600 focus:border-amber-500 focus:outline-none"
+                      rows={3}
+                    />
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => setShowRequestForm(null)}
+                        className="flex-1 py-2 bg-neutral-900 hover:bg-neutral-800 border border-neutral-800 text-white rounded-lg font-mono text-xs font-semibold tracking-wider uppercase cursor-pointer transition-colors"
+                      >
+                        CANCEL
+                      </button>
+                      <button
+                        onClick={async () => {
+                          const reason = (event?.target as any)?.parentElement?.querySelector('textarea')?.value || '';
+                          await submitRequest(showRequestForm, reason);
+                        }}
+                        className="flex-1 py-2 bg-amber-500 hover:bg-amber-600 text-black rounded-lg font-mono text-xs font-semibold tracking-wider uppercase cursor-pointer transition-colors"
+                      >
+                        SUBMIT
+                      </button>
+                    </div>
+                  </motion.div>
+                )}
               </div>
             </motion.div>
           </motion.div>
