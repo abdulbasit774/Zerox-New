@@ -3,7 +3,8 @@ import { motion, AnimatePresence } from 'motion/react';
 import {
   User, LogOut, Heart, Package, Settings, CreditCard, Bell, Lock, ChevronRight,
   MapPin, Mail, Phone, Edit2, Save, X, ShieldCheck, Award, TrendingUp, 
-  Download, Undo2, AlertCircle, CheckCircle, Clock, Truck, Check, Eye
+  Download, Undo2, AlertCircle, CheckCircle, Clock, Truck, Check, Eye,
+  Trash2, Edit3, Plus, Star, Eye as ViewIcon, ShoppingCart, Gift, Home
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { UserProfile } from '../types';
@@ -34,8 +35,12 @@ export default function CustomerDashboard({ user: propsUser, onLogout }: Custome
   const [selectedOrderForDetail, setSelectedOrderForDetail] = useState<any | null>(null);
   const [showAddressForm, setShowAddressForm] = useState(false);
   const [showRequestForm, setShowRequestForm] = useState<'cancel' | 'return' | 'refund' | null>(null);
+  const [editingAddressId, setEditingAddressId] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
+  const [showNotifications, setShowNotifications] = useState(false);
+  const [unreadNotifications, setUnreadNotifications] = useState(0);
 
   // Profile edit states
   const [editName, setEditName] = useState(displayUser?.displayName || '');
@@ -43,6 +48,18 @@ export default function CustomerDashboard({ user: propsUser, onLogout }: Custome
   const [editEmail, setEditEmail] = useState(displayUser?.email || '');
   const [editPassword, setEditPassword] = useState('');
   const [editPasswordConfirm, setEditPasswordConfirm] = useState('');
+
+  // Address form fields
+  const [addressForm, setAddressForm] = useState({
+    name: '',
+    address: '',
+    city: '',
+    state: '',
+    zip: '',
+    phone: '',
+    isDefault: false,
+    isBilling: false
+  });
 
   useEffect(() => {
     if (loggedIn) {
@@ -95,7 +112,10 @@ export default function CustomerDashboard({ user: propsUser, onLogout }: Custome
       if (!authContext.user?.uid) return;
       const q = query(collection(db, `users/${authContext.user.uid}/notifications`));
       const snapshot = await getDocs(q);
-      setNotifications(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+      const notifs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      setNotifications(notifs);
+      const unread = notifs.filter((n: any) => !n.read).length;
+      setUnreadNotifications(unread);
     } catch (error) {
       console.error('Error fetching notifications:', error);
     }
@@ -111,6 +131,31 @@ export default function CustomerDashboard({ user: propsUser, onLogout }: Custome
     localStorage.setItem('zerox_wishlist', JSON.stringify(items));
   };
 
+  const removeFromWishlist = (itemId: string) => {
+    const updated = wishlist.filter(id => id !== itemId);
+    saveWishlist(updated);
+  };
+
+  const markNotificationAsRead = async (notificationId: string) => {
+    try {
+      if (!authContext.user?.uid) return;
+      await updateDoc(doc(db, `users/${authContext.user.uid}/notifications`, notificationId), { read: true });
+      await fetchNotifications();
+    } catch (error) {
+      console.error('Error marking notification as read:', error);
+    }
+  };
+
+  const deleteNotification = async (notificationId: string) => {
+    try {
+      if (!authContext.user?.uid) return;
+      await deleteDoc(doc(db, `users/${authContext.user.uid}/notifications`, notificationId));
+      await fetchNotifications();
+    } catch (error) {
+      console.error('Error deleting notification:', error);
+    }
+  };
+
   const addAddress = async (address: any) => {
     try {
       setLoading(true);
@@ -121,10 +166,29 @@ export default function CustomerDashboard({ user: propsUser, onLogout }: Custome
       });
       await fetchAddresses();
       setShowAddressForm(false);
+      setAddressForm({ name: '', address: '', city: '', state: '', zip: '', phone: '', isDefault: false, isBilling: false });
+      setSuccess('Address added successfully');
       setError(null);
     } catch (err) {
       setError('Failed to add address');
       console.error('Error adding address:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const updateAddress = async (addressId: string, updates: any) => {
+    try {
+      setLoading(true);
+      if (!authContext.user?.uid) return;
+      await updateDoc(doc(db, `users/${authContext.user.uid}/addresses`, addressId), updates);
+      await fetchAddresses();
+      setEditingAddressId(null);
+      setSuccess('Address updated successfully');
+      setError(null);
+    } catch (err) {
+      setError('Failed to update address');
+      console.error('Error updating address:', err);
     } finally {
       setLoading(false);
     }
@@ -136,6 +200,7 @@ export default function CustomerDashboard({ user: propsUser, onLogout }: Custome
       if (!authContext.user?.uid) return;
       await deleteDoc(doc(db, `users/${authContext.user.uid}/addresses`, addressId));
       await fetchAddresses();
+      setSuccess('Address deleted successfully');
     } catch (err) {
       setError('Failed to delete address');
       console.error('Error deleting address:', err);
@@ -224,14 +289,27 @@ export default function CustomerDashboard({ user: propsUser, onLogout }: Custome
                 )}
               </div>
             </div>
-            <button
-              onClick={handleLogout}
-              disabled={isLoggingOut}
-              className="px-6 py-3 bg-red-500/10 hover:bg-red-500/20 border border-red-500/30 text-red-400 rounded-xl font-mono text-sm font-semibold tracking-wider uppercase transition-all cursor-pointer disabled:opacity-50"
-            >
-              <LogOut className="w-4 h-4 inline mr-2" />
-              {isLoggingOut ? 'LOGGING OUT...' : 'LOGOUT'}
-            </button>
+            <div className="flex items-center gap-4">
+              <div className="relative">
+                <button 
+                  onClick={() => setShowNotifications(!showNotifications)}
+                  className="p-3 hover:bg-neutral-900 rounded-xl transition-colors relative"
+                >
+                  <Bell className="w-5 h-5 text-neutral-400 hover:text-[#C9A227]" />
+                  {unreadNotifications > 0 && (
+                    <span className="absolute top-1 right-1 w-5 h-5 bg-red-500 text-white text-xs rounded-full flex items-center justify-center font-bold">{unreadNotifications}</span>
+                  )}
+                </button>
+              </div>
+              <button
+                onClick={handleLogout}
+                disabled={isLoggingOut}
+                className="px-6 py-3 bg-red-500/10 hover:bg-red-500/20 border border-red-500/30 text-red-400 rounded-xl font-mono text-sm font-semibold tracking-wider uppercase transition-all cursor-pointer disabled:opacity-50"
+              >
+                <LogOut className="w-4 h-4 inline mr-2" />
+                {isLoggingOut ? 'LOGGING OUT...' : 'LOGOUT'}
+              </button>
+            </div>
           </div>
 
           {/* Stats */}
@@ -518,44 +596,77 @@ export default function CustomerDashboard({ user: propsUser, onLogout }: Custome
                       <input
                         type="text"
                         placeholder="Full Name"
+                        value={addressForm.name}
+                        onChange={(e) => setAddressForm({ ...addressForm, name: e.target.value })}
                         className="col-span-2 bg-neutral-950 border border-neutral-800 rounded-lg p-3 text-white placeholder-neutral-600 focus:border-[#C9A227] focus:outline-none"
                       />
                       <input
                         type="text"
                         placeholder="Address"
+                        value={addressForm.address}
+                        onChange={(e) => setAddressForm({ ...addressForm, address: e.target.value })}
                         className="col-span-2 bg-neutral-950 border border-neutral-800 rounded-lg p-3 text-white placeholder-neutral-600 focus:border-[#C9A227] focus:outline-none"
                       />
                       <input
                         type="text"
                         placeholder="City"
+                        value={addressForm.city}
+                        onChange={(e) => setAddressForm({ ...addressForm, city: e.target.value })}
                         className="bg-neutral-950 border border-neutral-800 rounded-lg p-3 text-white placeholder-neutral-600 focus:border-[#C9A227] focus:outline-none"
                       />
                       <input
                         type="text"
                         placeholder="State"
+                        value={addressForm.state}
+                        onChange={(e) => setAddressForm({ ...addressForm, state: e.target.value })}
                         className="bg-neutral-950 border border-neutral-800 rounded-lg p-3 text-white placeholder-neutral-600 focus:border-[#C9A227] focus:outline-none"
                       />
                       <input
                         type="text"
                         placeholder="ZIP"
+                        value={addressForm.zip}
+                        onChange={(e) => setAddressForm({ ...addressForm, zip: e.target.value })}
                         className="bg-neutral-950 border border-neutral-800 rounded-lg p-3 text-white placeholder-neutral-600 focus:border-[#C9A227] focus:outline-none"
                       />
                       <input
                         type="tel"
                         placeholder="Phone"
+                        value={addressForm.phone}
+                        onChange={(e) => setAddressForm({ ...addressForm, phone: e.target.value })}
                         className="bg-neutral-950 border border-neutral-800 rounded-lg p-3 text-white placeholder-neutral-600 focus:border-[#C9A227] focus:outline-none"
                       />
+                      <label className="col-span-1 flex items-center gap-2 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={addressForm.isDefault}
+                          onChange={(e) => setAddressForm({ ...addressForm, isDefault: e.target.checked })}
+                          className="w-4 h-4 rounded border-neutral-600"
+                        />
+                        <span className="font-mono text-xs text-neutral-400">Default Address</span>
+                      </label>
+                      <label className="col-span-1 flex items-center gap-2 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={addressForm.isBilling}
+                          onChange={(e) => setAddressForm({ ...addressForm, isBilling: e.target.checked })}
+                          className="w-4 h-4 rounded border-neutral-600"
+                        />
+                        <span className="font-mono text-xs text-neutral-400">Billing Address</span>
+                      </label>
                     </div>
                     <div className="flex gap-2">
                       <button
-                        onClick={() => setShowAddressForm(false)}
+                        onClick={() => {
+                          setShowAddressForm(false);
+                          setAddressForm({ name: '', address: '', city: '', state: '', zip: '', phone: '', isDefault: false, isBilling: false });
+                        }}
                         className="flex-1 py-2 bg-neutral-900 hover:bg-neutral-800 border border-neutral-800 text-white rounded-lg font-mono text-xs font-semibold tracking-wider uppercase cursor-pointer transition-colors"
                       >
                         CANCEL
                       </button>
                       <button
-                        onClick={() => setShowAddressForm(false)}
-                        disabled={loading}
+                        onClick={() => addAddress(addressForm)}
+                        disabled={loading || !addressForm.name || !addressForm.address}
                         className="flex-1 py-2 bg-[#C9A227] hover:bg-amber-500 text-black rounded-lg font-mono text-xs font-semibold tracking-wider uppercase cursor-pointer transition-colors disabled:opacity-50"
                       >
                         {loading ? 'SAVING...' : 'SAVE'}
@@ -573,20 +684,49 @@ export default function CustomerDashboard({ user: propsUser, onLogout }: Custome
                 ) : (
                   <div className="grid gap-4">
                     {savedAddresses.map((addr) => (
-                      <div key={addr.id} className="bg-neutral-900/50 border border-neutral-800 rounded-lg p-4 flex items-start justify-between">
-                        <div>
-                          <p className="font-sans font-semibold text-white mb-1">{addr.name}</p>
-                          <p className="text-sm text-neutral-400 mb-1">{addr.address}</p>
-                          <p className="text-sm text-neutral-400">{addr.city}, {addr.state} {addr.zip}</p>
+                      <motion.div
+                        key={addr.id}
+                        initial={{ opacity: 0, x: -20 }}
+                        animate={{ opacity: 1, x: 0 }}
+                        className="bg-gradient-to-r from-neutral-950/60 to-neutral-950/20 border border-neutral-900 rounded-xl p-4 hover:border-[#C9A227]/50 transition-all"
+                      >
+                        <div className="flex items-start justify-between mb-3">
+                          <div className="flex-1">
+                            <div className="flex items-center gap-2 mb-1">
+                              <p className="font-sans font-semibold text-white">{addr.name}</p>
+                              {addr.isDefault && (
+                                <span className="px-2 py-1 bg-[#C9A227]/20 border border-[#C9A227]/50 text-[#C9A227] rounded-md font-mono text-[10px] font-bold uppercase">Default</span>
+                              )}
+                              {addr.isBilling && (
+                                <span className="px-2 py-1 bg-blue-500/20 border border-blue-500/50 text-blue-400 rounded-md font-mono text-[10px] font-bold uppercase">Billing</span>
+                              )}
+                            </div>
+                            <p className="text-sm text-neutral-400 mb-1">{addr.address}</p>
+                            <p className="text-sm text-neutral-400 mb-2">{addr.city}, {addr.state} {addr.zip}</p>
+                            {addr.phone && <p className="text-xs text-neutral-500">{addr.phone}</p>}
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <button
+                              onClick={() => {
+                                setEditingAddressId(addr.id);
+                                setAddressForm(addr);
+                              }}
+                              className="p-2 hover:bg-neutral-900 rounded-lg transition-colors"
+                              title="Edit address"
+                            >
+                              <Edit3 className="w-4 h-4 text-neutral-400 hover:text-[#C9A227]" />
+                            </button>
+                            <button
+                              onClick={() => deleteAddress(addr.id)}
+                              disabled={loading}
+                              className="p-2 hover:bg-red-900/20 rounded-lg transition-colors disabled:opacity-50"
+                              title="Delete address"
+                            >
+                              <Trash2 className="w-4 h-4 text-red-400" />
+                            </button>
+                          </div>
                         </div>
-                        <button
-                          onClick={() => deleteAddress(addr.id)}
-                          disabled={loading}
-                          className="p-2 hover:bg-red-900/20 rounded-lg transition-colors disabled:opacity-50"
-                        >
-                          <X className="w-4 h-4 text-red-400" />
-                        </button>
-                      </div>
+                      </motion.div>
                     ))}
                   </div>
                 )}
@@ -609,7 +749,36 @@ export default function CustomerDashboard({ user: propsUser, onLogout }: Custome
                     <p className="font-sans text-neutral-500">Save your favorite sneakers for later</p>
                   </div>
                 ) : (
-                  <p className="text-neutral-400">{wishlist.length} items saved</p>
+                  <div className="grid gap-4">
+                    {wishlist.map((itemId) => (
+                      <motion.div
+                        key={itemId}
+                        initial={{ opacity: 0, x: -20 }}
+                        animate={{ opacity: 1, x: 0 }}
+                        className="bg-neutral-950/50 border border-neutral-900 rounded-xl p-4 flex items-center justify-between hover:border-[#C9A227]/50 transition-all"
+                      >
+                        <div className="flex items-center gap-4">
+                          <Heart className="w-5 h-5 text-[#C9A227]" />
+                          <div>
+                            <p className="font-sans font-semibold text-white">Item #{itemId.substring(0, 8)}</p>
+                            <p className="text-xs text-neutral-500">Saved for later</p>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <button className="px-3 py-2 bg-neutral-900 hover:bg-neutral-800 border border-neutral-800 text-white rounded-lg font-mono text-xs font-semibold tracking-wider uppercase cursor-pointer transition-colors flex items-center gap-1">
+                            <ShoppingCart className="w-3 h-3" />
+                            ADD TO CART
+                          </button>
+                          <button 
+                            onClick={() => removeFromWishlist(itemId)}
+                            className="p-2 hover:bg-red-900/20 rounded-lg transition-colors"
+                          >
+                            <X className="w-4 h-4 text-red-400" />
+                          </button>
+                        </div>
+                      </motion.div>
+                    ))}
+                  </div>
                 )}
               </motion.div>
             )}
@@ -621,14 +790,47 @@ export default function CustomerDashboard({ user: propsUser, onLogout }: Custome
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: -10 }}
-                className="max-w-2xl"
               >
                 <h2 className="text-2xl font-black mb-8">Account Settings</h2>
-                <div className="space-y-4">
+                
+                {/* Payment Methods */}
+                <div className="mb-8">
+                  <div className="flex items-center justify-between mb-4">
+                    <h3 className="font-sans text-lg font-bold">Payment Methods</h3>
+                    <button className="px-3 py-1.5 bg-[#C9A227] hover:bg-amber-500 text-black rounded-lg font-mono text-xs font-semibold tracking-wider uppercase cursor-pointer transition-colors flex items-center gap-1">
+                      <Plus className="w-3 h-3" />
+                      ADD CARD
+                    </button>
+                  </div>
+                  {paymentMethods.length === 0 ? (
+                    <div className="text-center py-8 bg-neutral-950/50 border border-neutral-900 rounded-xl">
+                      <CreditCard className="w-8 h-8 text-neutral-600 mx-auto mb-2" />
+                      <p className="text-sm text-neutral-400">No payment methods saved</p>
+                    </div>
+                  ) : (
+                    <div className="grid gap-3">
+                      {paymentMethods.map((method) => (
+                        <div key={method.id} className="bg-neutral-950/50 border border-neutral-900 rounded-lg p-4 flex items-center justify-between">
+                          <div className="flex items-center gap-3">
+                            <CreditCard className="w-4 h-4 text-[#C9A227]" />
+                            <div>
+                              <p className="font-sans font-semibold text-white">{method.brand} •••• {method.last4}</p>
+                              <p className="text-xs text-neutral-500">Expires {method.expiry}</p>
+                            </div>
+                          </div>
+                          <button className="text-red-400 hover:text-red-300 font-mono text-xs uppercase">Remove</button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {/* Other Settings */}
+                <div className="space-y-3">
                   {[
                     { icon: Bell, label: 'Notifications', desc: 'Manage email and push notifications' },
-                    { icon: CreditCard, label: 'Payment Methods', desc: 'Add or remove payment options' },
                     { icon: TrendingUp, label: 'Preferences', desc: 'Personalize your experience' },
+                    { icon: Gift, label: 'Gift Cards', desc: 'Redeem or check balance' },
                   ].map((item, idx) => {
                     const Icon = item.icon;
                     return (
@@ -655,49 +857,167 @@ export default function CustomerDashboard({ user: propsUser, onLogout }: Custome
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: -10 }}
-                className="max-w-2xl"
               >
                 <h2 className="text-2xl font-black mb-8">Security & Privacy</h2>
                 <div className="space-y-6">
-                  <div className="bg-neutral-950/50 border border-neutral-900 rounded-xl p-6">
-                    <div className="flex items-center justify-between mb-4">
+                  {/* Change Password */}
+                  <motion.div className="bg-gradient-to-r from-neutral-950/60 to-neutral-950/20 border border-neutral-900 rounded-xl p-6 hover:border-[#C9A227]/30 transition-all">
+                    <div className="flex items-center justify-between">
                       <div>
-                        <p className="font-sans font-semibold text-white mb-1">Change Password</p>
+                        <div className="flex items-center gap-2 mb-1">
+                          <Lock className="w-4 h-4 text-[#C9A227]" />
+                          <p className="font-sans font-semibold text-white">Change Password</p>
+                        </div>
                         <p className="text-xs text-neutral-500">Update your account password regularly</p>
                       </div>
                       <button className="px-4 py-2 bg-neutral-900 hover:bg-neutral-800 border border-neutral-800 text-white rounded-lg font-mono text-xs font-semibold tracking-wider uppercase cursor-pointer transition-colors">
                         CHANGE
                       </button>
                     </div>
-                  </div>
-                  <div className="bg-neutral-950/50 border border-neutral-900 rounded-xl p-6">
-                    <div className="flex items-center justify-between mb-4">
+                  </motion.div>
+
+                  {/* Two-Factor Authentication */}
+                  <motion.div className="bg-gradient-to-r from-neutral-950/60 to-neutral-950/20 border border-neutral-900 rounded-xl p-6 hover:border-[#C9A227]/30 transition-all">
+                    <div className="flex items-center justify-between">
                       <div>
-                        <p className="font-sans font-semibold text-white mb-1">Two-Factor Authentication</p>
-                        <p className="text-xs text-neutral-500">Add an extra layer of security</p>
+                        <div className="flex items-center gap-2 mb-1">
+                          <ShieldCheck className="w-4 h-4 text-emerald-400" />
+                          <p className="font-sans font-semibold text-white">Two-Factor Authentication</p>
+                        </div>
+                        <p className="text-xs text-neutral-500">Add an extra layer of security to your account</p>
                       </div>
                       <button className="px-4 py-2 bg-neutral-900 hover:bg-neutral-800 border border-neutral-800 text-white rounded-lg font-mono text-xs font-semibold tracking-wider uppercase cursor-pointer transition-colors">
                         ENABLE
                       </button>
                     </div>
-                  </div>
-                  <div className="bg-neutral-950/50 border border-neutral-900 rounded-xl p-6">
+                  </motion.div>
+
+                  {/* Login Activity */}
+                  <motion.div className="bg-gradient-to-r from-neutral-950/60 to-neutral-950/20 border border-neutral-900 rounded-xl p-6 hover:border-[#C9A227]/30 transition-all">
                     <div className="flex items-center justify-between mb-4">
                       <div>
-                        <p className="font-sans font-semibold text-white mb-1">Login Activity</p>
-                        <p className="text-xs text-neutral-500">View your recent login history</p>
+                        <div className="flex items-center gap-2 mb-1">
+                          <Eye className="w-4 h-4 text-cyan-400" />
+                          <p className="font-sans font-semibold text-white">Active Sessions</p>
+                        </div>
+                        <p className="text-xs text-neutral-500">Manage devices accessing your account</p>
                       </div>
                       <button className="px-4 py-2 bg-neutral-900 hover:bg-neutral-800 border border-neutral-800 text-white rounded-lg font-mono text-xs font-semibold tracking-wider uppercase cursor-pointer transition-colors">
                         VIEW
                       </button>
                     </div>
-                  </div>
+                    <div className="grid gap-3">
+                      <div className="bg-neutral-950/50 rounded-lg p-3 flex items-center justify-between">
+                        <div>
+                          <p className="font-sans text-sm font-semibold text-white">Current Device</p>
+                          <p className="text-xs text-neutral-500">Chrome on macOS</p>
+                        </div>
+                        <span className="text-xs text-emerald-400 font-semibold">ACTIVE</span>
+                      </div>
+                    </div>
+                  </motion.div>
+
+                  {/* Privacy Settings */}
+                  <motion.div className="bg-gradient-to-r from-neutral-950/60 to-neutral-950/20 border border-neutral-900 rounded-xl p-6 hover:border-[#C9A227]/30 transition-all">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <div className="flex items-center gap-2 mb-1">
+                          <Lock className="w-4 h-4 text-blue-400" />
+                          <p className="font-sans font-semibold text-white">Privacy Settings</p>
+                        </div>
+                        <p className="text-xs text-neutral-500">Control data and visibility</p>
+                      </div>
+                      <button className="px-4 py-2 bg-neutral-900 hover:bg-neutral-800 border border-neutral-800 text-white rounded-lg font-mono text-xs font-semibold tracking-wider uppercase cursor-pointer transition-colors">
+                        MANAGE
+                      </button>
+                    </div>
+                  </motion.div>
+
+                  {/* Delete Account (Danger Zone) */}
+                  <motion.div className="bg-red-500/5 border border-red-500/30 rounded-xl p-6">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <div className="flex items-center gap-2 mb-1">
+                          <AlertCircle className="w-4 h-4 text-red-400" />
+                          <p className="font-sans font-semibold text-red-400">Delete Account</p>
+                        </div>
+                        <p className="text-xs text-neutral-500">Permanently delete your account and all data</p>
+                      </div>
+                      <button className="px-4 py-2 bg-red-500/10 hover:bg-red-500/20 border border-red-500/50 text-red-400 rounded-lg font-mono text-xs font-semibold tracking-wider uppercase cursor-pointer transition-colors">
+                        DELETE
+                      </button>
+                    </div>
+                  </motion.div>
                 </div>
               </motion.div>
             )}
           </AnimatePresence>
         </div>
       </div>
+
+      {/* Notifications Panel */}
+      <AnimatePresence>
+        {showNotifications && (
+          <motion.div
+            key="notifications-panel"
+            initial={{ opacity: 0, x: 20 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: 20 }}
+            className="fixed top-20 right-8 w-96 bg-neutral-950 border border-neutral-900 rounded-2xl shadow-2xl z-40 max-h-[500px] overflow-y-auto"
+          >
+            <div className="sticky top-0 bg-gradient-to-r from-neutral-950 to-black border-b border-neutral-900 p-4 flex items-center justify-between">
+              <h3 className="font-sans font-bold text-white">Notifications</h3>
+              <button
+                onClick={() => setShowNotifications(false)}
+                className="p-1 hover:bg-neutral-900 rounded-lg transition-colors"
+              >
+                <X className="w-4 h-4 text-neutral-400" />
+              </button>
+            </div>
+            {notifications.length === 0 ? (
+              <div className="text-center py-8 px-4">
+                <Bell className="w-8 h-8 text-neutral-600 mx-auto mb-2" />
+                <p className="text-sm text-neutral-400">No notifications yet</p>
+              </div>
+            ) : (
+              <div className="space-y-2 p-2">
+                {notifications.map((notif) => (
+                  <motion.div
+                    key={notif.id}
+                    initial={{ opacity: 0, y: -10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className={`p-3 rounded-lg border cursor-pointer transition-all ${
+                      notif.read
+                        ? 'bg-neutral-950 border-neutral-900'
+                        : 'bg-[#C9A227]/10 border-[#C9A227]/30 hover:border-[#C9A227]/50'
+                    }`}
+                    onClick={() => !notif.read && markNotificationAsRead(notif.id)}
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="flex-1">
+                        <p className={`font-sans text-sm font-semibold ${notif.read ? 'text-neutral-400' : 'text-white'}`}>
+                          {notif.title}
+                        </p>
+                        <p className="text-xs text-neutral-500 mt-1">{notif.message}</p>
+                        <p className="text-[10px] text-neutral-600 mt-1">{new Date(notif.date).toLocaleDateString()}</p>
+                      </div>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          deleteNotification(notif.id);
+                        }}
+                        className="p-1 hover:bg-red-900/20 rounded transition-colors"
+                      >
+                        <X className="w-3 h-3 text-neutral-400" />
+                      </button>
+                    </div>
+                  </motion.div>
+                ))}
+              </div>
+            )}
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Order Detail Modal */}
       <AnimatePresence>
