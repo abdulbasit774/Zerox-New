@@ -82,6 +82,13 @@ export const cartCol = collection(db, 'cart');
 export const inventoryCol = collection(db, 'inventory');
 export const notificationsCol = collection(db, 'notifications');
 export const paymentsCol = collection(db, 'payments');
+export const transactionsCol = collection(db, 'transactions');
+export const paymentMethodsCol = collection(db, 'paymentMethods');
+export const shippingMethodsCol = collection(db, 'shippingMethods');
+export const taxesCol = collection(db, 'taxes');
+export const giftCardsCol = collection(db, 'giftCards');
+export const returnsCol = collection(db, 'returns');
+export const refundsCol = collection(db, 'refunds');
 
 // User Profile Management Helpers
 export async function createUserProfile(uid: string, data: {
@@ -141,6 +148,155 @@ export async function updateUserProfile(uid: string, updates: any) {
     });
   } catch (error) {
     console.error('Error updating user profile:', error);
+    throw error;
+  }
+}
+
+// Payment Processing Helpers
+export async function createPayment(paymentData: {
+  orderId: string;
+  userId: string;
+  amount: number;
+  method: string;
+  status: 'pending' | 'completed' | 'failed' | 'cancelled';
+  cardLast4?: string;
+  cardBrand?: string;
+}) {
+  try {
+    const paymentId = `PAY-${Date.now()}-${Math.random().toString(36).substr(2, 9).toUpperCase()}`;
+    await setDoc(doc(db, 'payments', paymentId), {
+      ...paymentData,
+      paymentId,
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+    });
+    return paymentId;
+  } catch (error) {
+    console.error('Error creating payment:', error);
+    throw error;
+  }
+}
+
+export async function createTransaction(transactionData: {
+  paymentId: string;
+  orderId: string;
+  userId: string;
+  amount: number;
+  type: 'payment' | 'refund' | 'adjustment';
+  status: 'pending' | 'completed' | 'failed';
+}) {
+  try {
+    const transactionId = `TXN-${Date.now()}-${Math.random().toString(36).substr(2, 9).toUpperCase()}`;
+    await setDoc(doc(db, 'transactions', transactionId), {
+      ...transactionData,
+      transactionId,
+      createdAt: serverTimestamp(),
+    });
+    return transactionId;
+  } catch (error) {
+    console.error('Error creating transaction:', error);
+    throw error;
+  }
+}
+
+export async function applyCoupon(couponCode: string) {
+  try {
+    const couponRef = doc(db, 'coupons', couponCode.toUpperCase());
+    const couponSnap = await getDoc(couponRef);
+    
+    if (!couponSnap.exists()) {
+      throw new Error('Coupon not found');
+    }
+    
+    const coupon = couponSnap.data();
+    
+    if (!coupon.active) {
+      throw new Error('Coupon is inactive');
+    }
+    
+    if (coupon.expiryDate && new Date(coupon.expiryDate) < new Date()) {
+      throw new Error('Coupon has expired');
+    }
+    
+    if (coupon.usageLimit && coupon.usageCount >= coupon.usageLimit) {
+      throw new Error('Coupon usage limit reached');
+    }
+    
+    return coupon;
+  } catch (error) {
+    console.error('Error applying coupon:', error);
+    throw error;
+  }
+}
+
+export async function validateGiftCard(giftCardCode: string) {
+  try {
+    const giftCardRef = doc(db, 'giftCards', giftCardCode.toUpperCase());
+    const giftCardSnap = await getDoc(giftCardRef);
+    
+    if (!giftCardSnap.exists()) {
+      throw new Error('Gift card not found');
+    }
+    
+    const giftCard = giftCardSnap.data();
+    
+    if (giftCard.balance <= 0) {
+      throw new Error('Gift card balance is zero');
+    }
+    
+    if (giftCard.expiryDate && new Date(giftCard.expiryDate) < new Date()) {
+      throw new Error('Gift card has expired');
+    }
+    
+    return giftCard;
+  } catch (error) {
+    console.error('Error validating gift card:', error);
+    throw error;
+  }
+}
+
+export async function createRefund(refundData: {
+  orderId: string;
+  paymentId: string;
+  userId: string;
+  amount: number;
+  reason: string;
+  type: 'full' | 'partial';
+  status: 'pending' | 'approved' | 'rejected' | 'completed';
+}) {
+  try {
+    const refundId = `REF-${Date.now()}-${Math.random().toString(36).substr(2, 9).toUpperCase()}`;
+    await setDoc(doc(db, 'refunds', refundId), {
+      ...refundData,
+      refundId,
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+    });
+    return refundId;
+  } catch (error) {
+    console.error('Error creating refund:', error);
+    throw error;
+  }
+}
+
+export async function createReturn(returnData: {
+  orderId: string;
+  userId: string;
+  items: Array<{ itemId: string; quantity: number }>;
+  reason: string;
+  status: 'requested' | 'approved' | 'rejected' | 'shipped' | 'received' | 'refunded';
+}) {
+  try {
+    const returnId = `RET-${Date.now()}-${Math.random().toString(36).substr(2, 9).toUpperCase()}`;
+    await setDoc(doc(db, 'returns', returnId), {
+      ...returnData,
+      returnId,
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+    });
+    return returnId;
+  } catch (error) {
+    console.error('Error creating return:', error);
     throw error;
   }
 }

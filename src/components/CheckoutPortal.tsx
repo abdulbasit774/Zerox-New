@@ -62,6 +62,7 @@ export default function CheckoutPortal({
 
   // Loading / processing indicators
   const [processingText, setProcessingText] = useState('INITIATING TRANS-SECURE ENCRYPTION...');
+  const [paymentError, setPaymentError] = useState('');
 
   // Compute invoice totals
   const subtotal = cartItems.reduce((acc, item) => acc + item.sneaker.price * item.quantity, 0);
@@ -165,7 +166,19 @@ export default function CheckoutPortal({
     }
   };
 
-  const commitOrderToDatabase = async () => {
+  // Handle external payment success (Stripe, PayPal, etc)
+  const handlePayment = async (paymentId: string, details: any) => {
+    try {
+      setPaymentError('');
+      await commitOrderToDatabase(paymentId, details);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Payment processing failed';
+      setPaymentError(message);
+      setCheckoutStep('failed');
+    }
+  };
+
+  const commitOrderToDatabase = async (externalPaymentId?: string, externalDetails?: any) => {
     try {
       const uniqueId = `ZRX-${Math.floor(Math.random() * 900000 + 100000)}`;
       const serial = `SHA-${Math.random().toString(36).substring(2, 10).toUpperCase()}-${Math.random().toString(36).substring(2, 10).toUpperCase()}`;
@@ -199,7 +212,14 @@ export default function CheckoutPortal({
       };
 
       // 1. Save Order document to Firestore
-      await setDoc(doc(db, 'orders', uniqueId), orderPayload);
+      await setDoc(doc(db, 'orders', uniqueId), {
+        ...orderPayload,
+        createdAt: new Date().toISOString(),
+        shippingMethod,
+        couponCode: activePromo?.code || null,
+        discountAmount,
+        taxAmount,
+      });
 
       // 2. Decrement product inventories in Firestore
       for (const item of cartItems) {
@@ -216,16 +236,42 @@ export default function CheckoutPortal({
       }
 
       // 3. Save Payments Registry record
-      await setDoc(doc(db, 'payments', `PAY-${uniqueId}`), {
+      const finalPaymentId = externalPaymentId || `PAY-${uniqueId}`;
+      await setDoc(doc(db, 'payments', finalPaymentId), {
         orderId: uniqueId,
         amount: total,
         method: paymentMethod,
-        cardBrand: paymentMethod === 'card' ? paymentForm.cardBrand : 'Express Token',
+        cardBrand: paymentMethod === 'card' ? paymentForm.cardBrand : 
+                   paymentMethod === 'stripe' ? externalDetails?.cardBrand : 'Express Token',
+        cardLast4: externalDetails?.last4 || paymentForm.cardNumber.slice(-4),
         timestamp: new Date().toISOString(),
-        status: 'Completed'
+        status: 'Completed',
+        externalPaymentId: externalPaymentId || null,
       });
 
-      // 4. Dispatch a System Notification in Firestore
+      // 4. Create Transaction Record
+      await setDoc(doc(db, 'transactions', `TXN-${uniqueId}`), {
+        paymentId: finalPaymentId,
+        orderId: uniqueId,
+        amount: total,
+        type: 'payment',
+        status: 'completed',
+        timestamp: new Date().toISOString(),
+      });
+
+      // 5. Update coupon usage if applied
+      if (activePromo && activePromo.code) {
+        try {
+          const couponRef = doc(db, 'coupons', activePromo.code);
+          await updateDoc(couponRef, {
+            usageCount: increment(1),
+          });
+        } catch (err) {
+          console.log('Coupon update failed, continuing');
+        }
+      }
+
+      // 6. Dispatch a System Notification in Firestore
       await setDoc(doc(db, 'notifications', `notif-${uniqueId}`), {
         title: 'TRANSACTION COMMITTED',
         message: `Your payment of $${total.toFixed(2)} was securely processed. Check Order tracking details.`,
@@ -238,7 +284,7 @@ export default function CheckoutPortal({
       onCheckoutSuccess(orderPayload);
     } catch (err) {
       console.error('Error committing purchase ledger:', err);
-      // Fallback
+      setPaymentError(err instanceof Error ? err.message : 'Order processing failed');
       setCheckoutStep('failed');
     }
   };
